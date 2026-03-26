@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.copilot-flow/
+*.db
+.env
+.env.local
+coverage/
+*.log
