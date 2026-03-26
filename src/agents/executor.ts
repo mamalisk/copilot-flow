@@ -9,7 +9,8 @@ import { withRetry, RetryPredicates } from '../core/retry.js';
 import { classifyError } from '../core/error-handler.js';
 import { output } from '../output.js';
 import { getAgentDefinition } from './registry.js';
-import type { AgentType, AgentResult, RetryConfig } from '../types.js';
+import type { AgentType, AgentResult } from '../types.js';
+import type { RetryConfig } from '../core/retry.js';
 
 // Re-export RetryConfig from types for convenience
 export type { AgentType, AgentResult };

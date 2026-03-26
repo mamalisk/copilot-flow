@@ -4,7 +4,8 @@ import { agentPool } from '../agents/pool.js';
 import { listAgentTypes, routeTask } from '../agents/registry.js';
 import { output, agentBadge, printTable } from '../output.js';
 import { loadConfig } from '../config.js';
-import type { AgentType, BackoffStrategy } from '../types.js';
+import type { AgentType } from '../types.js';
+import type { BackoffStrategy } from '../core/retry.js';
 
 export function registerAgent(program: Command): void {
   const agent = program.command('agent').description('Manage Copilot agents');

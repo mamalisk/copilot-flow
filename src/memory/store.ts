@@ -1,24 +1,14 @@
 /**
  * SQLite-backed namespaced key-value memory store.
  * Used by agents to share state and by the CLI to persist data between runs.
+ *
+ * Uses Node.js built-in `node:sqlite` (available since Node 22.5) to avoid
+ * native addon compilation requirements.
  */
 
 import path from 'path';
+import { DatabaseSync } from 'node:sqlite';
 import type { MemoryEntry, StoreOptions } from '../types.js';
-
-// We use a lazy getter so the module can be imported without better-sqlite3
-// being available (e.g. in tests that mock it).
-let _Database: typeof import('better-sqlite3').default | null = null;
-
-function getDatabase() {
-  if (!_Database) {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    _Database = require('better-sqlite3') as typeof import('better-sqlite3').default;
-  }
-  return _Database;
-}
-
-type Db = InstanceType<typeof import('better-sqlite3').default>;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS entries (
@@ -36,20 +26,19 @@ CREATE INDEX IF NOT EXISTS idx_tags        ON entries (tags);
 `;
 
 export class MemoryStore {
-  private db: Db;
+  private db: DatabaseSync;
 
   constructor(dbPath = path.join('.copilot-flow', 'memory.db')) {
-    const Database = getDatabase();
     const absPath = path.resolve(dbPath);
     // Ensure parent directory exists
     const dir = path.dirname(absPath);
     const { mkdirSync, existsSync } = require('fs') as typeof import('fs');
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
 
-    this.db = new Database(absPath);
+    this.db = new DatabaseSync(absPath);
     this.db.exec(SCHEMA);
     // Enable WAL for better concurrent read performance
-    this.db.pragma('journal_mode = WAL');
+    this.db.exec('PRAGMA journal_mode = WAL');
   }
 
   /** Store a value under namespace/key. Upserts if key already exists. */
@@ -157,18 +146,18 @@ export class MemoryStore {
 
   /** Delete a specific key from a namespace. */
   delete(namespace: string, key: string): boolean {
-    const info = this.db
+    const result = this.db
       .prepare(`DELETE FROM entries WHERE namespace = ? AND key = ?`)
-      .run(namespace, key);
-    return info.changes > 0;
+      .run(namespace, key) as { changes: number };
+    return result.changes > 0;
   }
 
   /** Delete all entries in a namespace. Returns the number of deleted entries. */
   clear(namespace: string): number {
-    const info = this.db
+    const result = this.db
       .prepare(`DELETE FROM entries WHERE namespace = ?`)
-      .run(namespace);
-    return info.changes;
+      .run(namespace) as { changes: number };
+    return result.changes;
   }
 
   /** Close the database connection. */
