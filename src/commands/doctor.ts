@@ -1,6 +1,5 @@
 import { Command } from 'commander';
 import { execSync } from 'child_process';
-import { existsSync } from 'fs';
 import { output, printTable } from '../output.js';
 import { isInitialised } from '../config.js';
 import { clientManager } from '../core/client-manager.js';
@@ -52,37 +51,30 @@ export function registerDoctor(program: Command): void {
         detail: copilotInstalled ? copilotVersion : 'Not found — install from https://github.com/github/copilot',
       });
 
-      // ── copilot authenticated ────────────────────────────────────────────
-      let authenticated = false;
+      // ── copilot authenticated + SDK reachable ────────────────────────────
+      // The SDK ping is the definitive test: it starts the copilot process and
+      // attempts a real connection. If this fails the CLI is not authenticated.
+      let sdkPing = false;
+      let sdkDetail = 'Skipped (copilot CLI not found)';
       if (copilotInstalled) {
         try {
-          execSync('copilot --version', { stdio: 'pipe' });
-          // A successful ping via SDK is the real test — we do that below
-          authenticated = true;
-        } catch {
-          authenticated = false;
+          sdkPing = await clientManager.ping();
+          await clientManager.shutdown();
+          sdkDetail = 'OK';
+        } catch (err) {
+          sdkPing = false;
+          const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
+          if (msg.includes('authentication') || msg.includes('custom provider') || msg.includes('session was not created')) {
+            sdkDetail = 'Not authenticated — run: copilot login';
+          } else {
+            sdkDetail = `Failed — ${(err instanceof Error ? err.message : String(err)).slice(0, 60)}`;
+          }
         }
       }
       checks.push({
         name: 'copilot authenticated',
-        ok: authenticated,
-        detail: authenticated ? 'Logged in' : 'Run: copilot login',
-      });
-
-      // ── @github/copilot-sdk reachable ───────────────────────────────────
-      let sdkPing = false;
-      if (copilotInstalled && authenticated) {
-        try {
-          sdkPing = await clientManager.ping();
-          await clientManager.shutdown();
-        } catch {
-          sdkPing = false;
-        }
-      }
-      checks.push({
-        name: '@github/copilot-sdk ping',
         ok: sdkPing,
-        detail: sdkPing ? 'OK' : copilotInstalled ? 'Failed — check copilot login status' : 'Skipped',
+        detail: sdkDetail,
       });
 
       // ── .copilot-flow initialised ────────────────────────────────────────

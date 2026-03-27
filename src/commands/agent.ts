@@ -7,6 +7,7 @@ import { agentPool } from '../agents/pool.js';
 import { listAgentTypes, routeTask } from '../agents/registry.js';
 import { output, agentBadge, printTable, setLogLevel, withSpinner } from '../output.js';
 import { loadConfig } from '../config.js';
+import { clientManager } from '../core/client-manager.js';
 import type { AgentType } from '../types.js';
 import type { BackoffStrategy } from '../core/retry.js';
 import type { CustomAgentConfig } from '@github/copilot-sdk';
@@ -135,7 +136,7 @@ export function registerAgent(program: Command): void {
 
       const runTask = () => runAgentTask(agentType, task, {
         model: opts.model ?? config.defaultModel,
-        timeoutMs: parseInt(opts.timeout, 10),
+        timeoutMs: opts.timeout !== '120000' ? parseInt(opts.timeout, 10) : config.defaultTimeoutMs,
         retryConfig: opts.retry === false
           ? { maxAttempts: 1 }
           : {
@@ -172,8 +173,11 @@ export function registerAgent(program: Command): void {
         }
       } else {
         output.error(`Failed: ${result.error}`);
+        await clientManager.shutdown();
         process.exit(1);
       }
+      await clientManager.shutdown();
+      process.exit(0);
     });
 
   // ── agent list ─────────────────────────────────────────────────────────────

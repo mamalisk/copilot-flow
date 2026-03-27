@@ -6,6 +6,7 @@ import { runSwarm } from '../swarm/coordinator.js';
 import { routeTask } from '../agents/registry.js';
 import { output, agentBadge } from '../output.js';
 import { loadConfig, saveConfig } from '../config.js';
+import { clientManager } from '../core/client-manager.js';
 import type { SwarmTask, SwarmTopology, AgentType, SessionExtensions } from '../types.js';
 import type { CustomAgentConfig } from '@github/copilot-sdk';
 
@@ -79,6 +80,7 @@ export function registerSwarm(program: Command): void {
     .option('--agent-dir <path>', 'Directory of *.json custom agent definitions (repeatable)',
       (val, prev: string[]) => [...prev, val], [] as string[])
     .option('--agent <name>', 'Name of custom agent to activate for every session in this swarm')
+    .option('--timeout <ms>', 'Session timeout per agent in ms (default: from config, fallback 120000)')
     .action(async (opts: {
       task?: string;
       spec?: string;
@@ -95,6 +97,7 @@ export function registerSwarm(program: Command): void {
       disableSkill: string[];
       agentDir: string[];
       agent?: string;
+      timeout?: string;
     }) => {
       let task = opts.task ?? '';
       if (opts.spec) {
@@ -121,6 +124,7 @@ export function registerSwarm(program: Command): void {
       const customAgents     = loadAgentsFromDirs(agentDirs);
 
       const sessionOptions: SessionExtensions = {
+        timeoutMs:            opts.timeout ? parseInt(opts.timeout, 10) : config.defaultTimeoutMs,
         instructionsContent:  instructionsContent,
         skillDirectories:     skillDirectories.length  ? skillDirectories  : undefined,
         disabledSkills:       disabledSkills.length    ? disabledSkills    : undefined,
@@ -174,6 +178,10 @@ export function registerSwarm(program: Command): void {
         writeFileSync(opts.output, lines.join('\n'), 'utf-8');
         output.success(`Results written to ${opts.output}`);
       }
+
+      const anyFailed = [...results.values()].some(r => !r.success);
+      await clientManager.shutdown();
+      process.exit(anyFailed ? 1 : 0);
     });
 
   // ── swarm status ───────────────────────────────────────────────────────────

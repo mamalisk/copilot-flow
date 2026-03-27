@@ -60,6 +60,8 @@ export interface AgentResult {
  * All fields are optional — omitting them uses SDK defaults.
  */
 export interface SessionExtensions {
+  /** Session timeout in ms. Overrides the executor default (120 000). */
+  timeoutMs?: number;
   /** Content of a repo instructions file, injected into the custom_instructions section. */
   instructionsContent?: string;
   /** Directories to scan for SKILL.md files. */
@@ -141,6 +143,8 @@ export interface CopilotFlowConfig {
   version: string;
   /** Default model passed to createSession(). Default: 'gpt-4o' */
   defaultModel: string;
+  /** Default session timeout in ms. Default: 120000 (2 min). CLI --timeout overrides per-run. */
+  defaultTimeoutMs: number;
   swarm: {
     topology: SwarmTopology;
     /** Maximum concurrent sessions. Default: 8 */

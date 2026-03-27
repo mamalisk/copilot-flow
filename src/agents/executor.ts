@@ -141,6 +141,14 @@ export async function runAgentTask(
   } catch (err) {
     const classified = classifyError(err);
     output.error(`[${agentType}] Failed after ${attempts} attempt(s): ${classified.message}`);
+    if (classified.category === 'authentication') {
+      output.dim('  → On enterprise/managed Macs: set GITHUB_TOKEN or GH_TOKEN to skip keychain');
+      output.dim('  →   export GITHUB_TOKEN=<your-pat>   # GitHub PAT with Copilot access');
+      output.dim('  →   export GH_TOKEN=$(gh auth token)  # if gh CLI is already authenticated');
+      output.dim('  → On personal machines: run: copilot login');
+    } else if (classified.category === 'copilot_not_installed') {
+      output.dim('  → Install the Copilot CLI: https://github.com/github/copilot');
+    }
 
     return {
       agentType,

@@ -48,7 +48,9 @@ const PATTERNS: Array<{
       msg.includes('unauthorized') ||
       msg.includes('authentication') ||
       msg.includes('not authenticated') ||
-      msg.includes('login required'),
+      msg.includes('login required') ||
+      msg.includes('custom provider') ||
+      msg.includes('session was not created'),
     category: 'authentication',
     retryable: false,
   },

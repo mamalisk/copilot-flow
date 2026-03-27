@@ -16,7 +16,10 @@ export class ClientManager {
       return this.client;
     }
 
-    const token = process.env.GITHUB_TOKEN;
+    // GITHUB_TOKEN takes precedence; GH_TOKEN is set by the GitHub CLI after
+    // `gh auth login` and works on both github.com and enterprise instances.
+    // Using a token bypasses macOS Keychain prompts entirely.
+    const token = process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN;
 
     this.client = new CopilotClient(
       token
