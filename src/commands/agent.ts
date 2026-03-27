@@ -5,7 +5,7 @@ import matter from 'gray-matter';
 import { runAgentTask } from '../agents/executor.js';
 import { agentPool } from '../agents/pool.js';
 import { listAgentTypes, routeTask } from '../agents/registry.js';
-import { output, agentBadge, printTable } from '../output.js';
+import { output, agentBadge, printTable, setLogLevel, withSpinner } from '../output.js';
 import { loadConfig } from '../config.js';
 import type { AgentType } from '../types.js';
 import type { BackoffStrategy } from '../core/retry.js';
@@ -78,6 +78,7 @@ export function registerAgent(program: Command): void {
     .option('--agent-dir <path>', 'Directory of *.json custom agent definitions (repeatable)',
       (val, prev: string[]) => [...prev, val], [] as string[])
     .option('--agent <name>', 'Name of custom agent to activate for this session')
+    .option('--verbose', 'Print debug info: session lifecycle, model, prompt size, retries')
     .action(async (opts: {
       task?: string;
       spec?: string;
@@ -96,6 +97,7 @@ export function registerAgent(program: Command): void {
       disableSkill: string[];
       agentDir: string[];
       agent?: string;
+      verbose: boolean;
     }) => {
       let task = opts.task ?? '';
       if (opts.spec) {
@@ -127,9 +129,11 @@ export function registerAgent(program: Command): void {
       const agentDirs = [...config.agents.directories, ...opts.agentDir].filter(Boolean);
       const customAgents = loadAgentsFromDirs(agentDirs);
 
+      if (opts.verbose) setLogLevel('debug');
+
       output.info(`${agentBadge(agentType)} Running: ${task.slice(0, 80)}`);
 
-      const result = await runAgentTask(agentType, task, {
+      const runTask = () => runAgentTask(agentType, task, {
         model: opts.model ?? config.defaultModel,
         timeoutMs: parseInt(opts.timeout, 10),
         retryConfig: opts.retry === false
@@ -146,6 +150,12 @@ export function registerAgent(program: Command): void {
         customAgents: customAgents.length ? customAgents : undefined,
         agentName: opts.agent,
       });
+
+      // In stream mode output arrives live; in non-stream mode show a spinner so
+      // the user knows the agent is active.
+      const result = opts.stream || opts.verbose
+        ? await runTask()
+        : await withSpinner(`${agentBadge(agentType)} Thinking…`, runTask);
 
       if (opts.stream) output.blank();
 

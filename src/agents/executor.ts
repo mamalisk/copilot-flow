@@ -66,6 +66,7 @@ export async function runAgentTask(
       async () => {
         attempts++;
         const client = await clientManager.getClient();
+        output.debug(`[${agentType}] Creating session (model: ${model}, attempt: ${attempts})`);
 
         const session = await client.createSession({
           model,
@@ -108,6 +109,7 @@ export async function runAgentTask(
           });
         }
 
+        output.debug(`[${agentType}] Sending prompt (${task.length} chars, timeout: ${timeoutMs}ms)`);
         const result = await session.sendAndWait({ prompt: task }, timeoutMs);
 
         // Prefer the full message from sendAndWait; fall back to streamed text
