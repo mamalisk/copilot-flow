@@ -31,6 +31,17 @@ export const DEFAULT_CONFIG: CopilotFlowConfig = {
     enabled: true,
     timeoutMs: 5_000,
   },
+  instructions: {
+    file: '.github/copilot-instructions.md',
+    autoLoad: true,
+  },
+  skills: {
+    directories: [],
+    disabled: [],
+  },
+  agents: {
+    directories: [],
+  },
 };
 
 /** Resolve the config file path relative to cwd. */
@@ -75,10 +86,13 @@ function mergeConfig(
   return {
     ...base,
     ...override,
-    swarm: { ...base.swarm, ...(override.swarm ?? {}) },
-    memory: { ...base.memory, ...(override.memory ?? {}) },
-    retry: { ...base.retry, ...(override.retry ?? {}) },
-    hooks: { ...base.hooks, ...(override.hooks ?? {}) },
+    swarm:        { ...base.swarm,        ...(override.swarm        ?? {}) },
+    memory:       { ...base.memory,       ...(override.memory       ?? {}) },
+    retry:        { ...base.retry,        ...(override.retry        ?? {}) },
+    hooks:        { ...base.hooks,        ...(override.hooks        ?? {}) },
+    instructions: { ...base.instructions, ...(override.instructions ?? {}) },
+    skills:       { ...base.skills,       ...(override.skills       ?? {}) },
+    agents:       { ...base.agents,       ...(override.agents       ?? {}) },
   };
 }
 

@@ -1,5 +1,7 @@
-import { readFileSync, writeFileSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, readdirSync } from 'fs';
+import { join } from 'path';
 import { Command } from 'commander';
+import matter from 'gray-matter';
 import { runAgentTask } from '../agents/executor.js';
 import { agentPool } from '../agents/pool.js';
 import { listAgentTypes, routeTask } from '../agents/registry.js';
@@ -7,6 +9,47 @@ import { output, agentBadge, printTable } from '../output.js';
 import { loadConfig } from '../config.js';
 import type { AgentType } from '../types.js';
 import type { BackoffStrategy } from '../core/retry.js';
+import type { CustomAgentConfig } from '@github/copilot-sdk';
+
+// ── Shared helpers ────────────────────────────────────────────────────────────
+
+/** Read repo instructions from disk. Returns undefined if disabled or not found. */
+function resolveInstructions(flag: string | undefined, disabled: boolean, configFile: string, autoLoad: boolean): string | undefined {
+  if (disabled) return undefined;
+  const filePath = flag ?? (autoLoad ? configFile : undefined);
+  if (!filePath) return undefined;
+  if (existsSync(filePath)) return readFileSync(filePath, 'utf-8').trim();
+  return undefined;
+}
+
+/**
+ * Load all *.md custom agent definitions from one or more directories.
+ * Each file uses YAML frontmatter for metadata; the markdown body is the prompt.
+ *
+ * Frontmatter fields:
+ *   name        — agent identifier (defaults to filename without .md)
+ *   displayName — human-readable label (optional)
+ *   description — shown in agent listings (optional)
+ *   tools       — list of tool names the agent may use (optional)
+ */
+function loadAgentsFromDirs(dirs: string[]): CustomAgentConfig[] {
+  return dirs.flatMap(dir => {
+    if (!existsSync(dir)) return [];
+    return readdirSync(dir)
+      .filter(f => f.endsWith('.md'))
+      .map(f => {
+        const raw = readFileSync(join(dir, f), 'utf-8');
+        const { data, content } = matter(raw);
+        return {
+          name:        data.name        ?? f.replace(/\.md$/, ''),
+          displayName: data.displayName,
+          description: data.description,
+          tools:       data.tools,
+          prompt:      content.trim(),
+        } as CustomAgentConfig;
+      });
+  });
+}
 
 export function registerAgent(program: Command): void {
   const agent = program.command('agent').description('Manage Copilot agents');
@@ -26,6 +69,15 @@ export function registerAgent(program: Command): void {
     .option('--retry-strategy <strategy>', 'Backoff strategy (exponential|linear|constant|fibonacci)', 'exponential')
     .option('--no-retry', 'Disable retries')
     .option('--stream', 'Stream output as it arrives')
+    .option('--instructions <file>', 'Repo instructions markdown file to inject (default: auto-detects .github/copilot-instructions.md)')
+    .option('--no-instructions', 'Disable auto-detection of copilot-instructions.md')
+    .option('--skill-dir <path>', 'Directory to scan for SKILL.md files (repeatable)',
+      (val, prev: string[]) => [...prev, val], [] as string[])
+    .option('--disable-skill <name>', 'Skill name to disable (repeatable)',
+      (val, prev: string[]) => [...prev, val], [] as string[])
+    .option('--agent-dir <path>', 'Directory of *.json custom agent definitions (repeatable)',
+      (val, prev: string[]) => [...prev, val], [] as string[])
+    .option('--agent <name>', 'Name of custom agent to activate for this session')
     .action(async (opts: {
       task?: string;
       spec?: string;
@@ -38,6 +90,12 @@ export function registerAgent(program: Command): void {
       retryStrategy: string;
       retry: boolean;
       stream: boolean;
+      instructions?: string;
+      noInstructions?: boolean;
+      skillDir: string[];
+      disableSkill: string[];
+      agentDir: string[];
+      agent?: string;
     }) => {
       let task = opts.task ?? '';
       if (opts.spec) {
@@ -50,6 +108,24 @@ export function registerAgent(program: Command): void {
 
       const config = loadConfig();
       const agentType: AgentType = (opts.type as AgentType | undefined) ?? routeTask(task);
+
+      // Resolve session extensions from flags + config defaults
+      const instructionsContent = resolveInstructions(
+        opts.instructions,
+        opts.noInstructions ?? false,
+        config.instructions.file,
+        config.instructions.autoLoad,
+      );
+      const skillDirectories = [
+        ...config.skills.directories,
+        ...opts.skillDir,
+      ].filter(Boolean);
+      const disabledSkills = [
+        ...config.skills.disabled,
+        ...opts.disableSkill,
+      ].filter(Boolean);
+      const agentDirs = [...config.agents.directories, ...opts.agentDir].filter(Boolean);
+      const customAgents = loadAgentsFromDirs(agentDirs);
 
       output.info(`${agentBadge(agentType)} Running: ${task.slice(0, 80)}`);
 
@@ -64,6 +140,11 @@ export function registerAgent(program: Command): void {
               backoffStrategy: opts.retryStrategy as BackoffStrategy,
             },
         onChunk: opts.stream ? chunk => process.stdout.write(chunk) : undefined,
+        instructionsContent,
+        skillDirectories: skillDirectories.length ? skillDirectories : undefined,
+        disabledSkills: disabledSkills.length ? disabledSkills : undefined,
+        customAgents: customAgents.length ? customAgents : undefined,
+        agentName: opts.agent,
       });
 
       if (opts.stream) output.blank();

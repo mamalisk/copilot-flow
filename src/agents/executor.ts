@@ -4,6 +4,7 @@
  */
 
 import { approveAll } from '@github/copilot-sdk';
+import type { CustomAgentConfig } from '@github/copilot-sdk';
 import { clientManager } from '../core/client-manager.js';
 import { withRetry, RetryPredicates } from '../core/retry.js';
 import { classifyError } from '../core/error-handler.js';
@@ -24,6 +25,16 @@ export interface RunTaskOptions {
   retryConfig?: Partial<RetryConfig>;
   /** Called with each streamed text delta (for live output). */
   onChunk?: (text: string) => void;
+  /** Content of a repo instructions file, injected into the custom_instructions section. */
+  instructionsContent?: string;
+  /** Directories to scan for SKILL.md files. */
+  skillDirectories?: string[];
+  /** Skill names to disable for this session. */
+  disabledSkills?: string[];
+  /** Custom agent definitions to register in the session. */
+  customAgents?: CustomAgentConfig[];
+  /** Name of the custom agent to activate for this session. */
+  agentName?: string;
 }
 
 /**
@@ -58,8 +69,30 @@ export async function runAgentTask(
 
         const session = await client.createSession({
           model,
-          systemMessage: { content: def.systemMessage },
           onPermissionRequest: approveAll,
+
+          // Repo instructions go into the dedicated custom_instructions section so
+          // they don't overwrite the agent's own system message.
+          systemMessage: options.instructionsContent
+            ? {
+                mode: 'customize' as const,
+                content: def.systemMessage,
+                sections: {
+                  custom_instructions: {
+                    action: 'append' as const,
+                    content: options.instructionsContent,
+                  },
+                } as Record<string, { action: 'append' | 'replace' | 'remove'; content?: string }>,
+              }
+            : { content: def.systemMessage },
+
+          // Skills
+          ...(options.skillDirectories?.length && { skillDirectories: options.skillDirectories }),
+          ...(options.disabledSkills?.length   && { disabledSkills:   options.disabledSkills   }),
+
+          // Custom agents
+          ...(options.customAgents?.length     && { customAgents:     options.customAgents     }),
+          ...(options.agentName                && { agent:            options.agentName        }),
         });
 
         sessionId = session.sessionId;

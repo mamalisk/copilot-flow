@@ -65,6 +65,7 @@ async function runSequential(
     output.info(`${agentBadge(task.agentType)} Running task: ${task.id}`);
     const result = await runAgentTask(task.agentType, buildPrompt(task, results, mem, ns), {
       retryConfig: task.retryConfig,
+      ...task.sessionOptions,
       onChunk: options.onProgress
         ? chunk => options.onProgress!(task.id, task.agentType, chunk)
         : undefined,
@@ -107,6 +108,7 @@ async function runHierarchical(
       ready.map(task =>
         runAgentTask(task.agentType, buildPrompt(task, results, mem, ns), {
           retryConfig: task.retryConfig,
+          ...task.sessionOptions,
           onChunk: options.onProgress
             ? chunk => options.onProgress!(task.id, task.agentType, chunk)
             : undefined,
@@ -136,6 +138,7 @@ async function runMesh(
     tasks.map(task =>
       runAgentTask(task.agentType, buildPrompt(task, results, mem, ns), {
         retryConfig: task.retryConfig,
+        ...task.sessionOptions,
         onChunk: options.onProgress
           ? chunk => options.onProgress!(task.id, task.agentType, chunk)
           : undefined,

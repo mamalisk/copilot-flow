@@ -221,6 +221,80 @@ If you don't specify `--type`, copilot-flow automatically routes based on keywor
 
 ---
 
+## Skills, Custom Agents & Repo Instructions
+
+### Repo instructions (auto-loaded)
+
+Place a `copilot-instructions.md` file anywhere (default: `.github/copilot-instructions.md`).
+It is automatically injected into every session as repo-wide context — stack rules, coding
+conventions, security constraints, etc.
+
+```bash
+# Auto-detected (no flag needed if file is at .github/copilot-instructions.md)
+copilot-flow agent spawn --task "..."
+
+# Explicit path
+copilot-flow agent spawn --task "..." --instructions docs/rules.md
+
+# Disable auto-detection
+copilot-flow agent spawn --task "..." --no-instructions
+```
+
+### Skills (`SKILL.md`)
+
+Skills teach the model domain knowledge scoped to a directory. Any `SKILL.md` file
+found in the directories you point to is loaded into the session.
+
+```bash
+copilot-flow agent spawn --task "..." --skill-dir .github --skill-dir .copilot/skills
+```
+
+### Custom agents (`.md` files)
+
+Define specialist agents as markdown files — **YAML frontmatter** for metadata,
+**markdown body** for the system prompt.
+
+```markdown
+---
+name: nextjs-expert
+displayName: Next.js Expert
+description: Specialist in Next.js 14 App Router and edge runtimes
+tools:
+  - read_file
+  - write_file
+  - run_command
+---
+
+You are a Next.js 14 expert specialising in the App Router, React Server Components,
+and edge runtimes. You write idiomatic, performant Next.js code and follow the
+official Next.js conventions for file-based routing, data fetching, and caching.
+```
+
+Place agent files in a directory (e.g. `.copilot/agents/`) and reference them:
+
+```bash
+copilot-flow agent spawn \
+  --agent-dir .copilot/agents \
+  --agent nextjs-expert \
+  --task "Migrate pages/index.tsx to the App Router"
+```
+
+### Persisting defaults
+
+Set directories once in `.copilot-flow/config.json` so you never need to repeat flags:
+
+```json
+{
+  "instructions": { "file": ".github/copilot-instructions.md", "autoLoad": true },
+  "skills":       { "directories": [".github", ".copilot/skills"], "disabled": [] },
+  "agents":       { "directories": [".copilot/agents"] }
+}
+```
+
+See [docs/custom-agents-example.md](docs/custom-agents-example.md) for a full worked example.
+
+---
+
 ## Programmatic API
 
 ```typescript

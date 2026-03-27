@@ -3,6 +3,7 @@
  */
 
 import type { RetryConfig } from './core/retry.js';
+import type { CustomAgentConfig } from '@github/copilot-sdk';
 
 // ─── Agent Types ─────────────────────────────────────────────────────────────
 
@@ -52,6 +53,25 @@ export interface AgentResult {
   error?: string;
 }
 
+// ─── Session Extension Types ──────────────────────────────────────────────────
+
+/**
+ * SDK-level session customisations shared between RunTaskOptions and SwarmTask.
+ * All fields are optional — omitting them uses SDK defaults.
+ */
+export interface SessionExtensions {
+  /** Content of a repo instructions file, injected into the custom_instructions section. */
+  instructionsContent?: string;
+  /** Directories to scan for SKILL.md files. */
+  skillDirectories?: string[];
+  /** Skill names to disable for this session. */
+  disabledSkills?: string[];
+  /** Custom agent definitions to register. */
+  customAgents?: CustomAgentConfig[];
+  /** Name of the custom agent to activate. */
+  agentName?: string;
+}
+
 // ─── Swarm Types ──────────────────────────────────────────────────────────────
 
 export type SwarmTopology = 'hierarchical' | 'mesh' | 'sequential';
@@ -63,6 +83,8 @@ export interface SwarmTask {
   /** IDs of tasks that must complete before this one. */
   dependsOn?: string[];
   retryConfig?: Partial<RetryConfig>;
+  /** Session-level options forwarded to runAgentTask for every agent in this task. */
+  sessionOptions?: SessionExtensions;
 }
 
 export interface SwarmState {
@@ -134,6 +156,22 @@ export interface CopilotFlowConfig {
     enabled: boolean;
     /** Per-hook execution timeout in ms. Default: 5000 */
     timeoutMs: number;
+  };
+  instructions: {
+    /** Path to repo instructions file. Default: .github/copilot-instructions.md */
+    file: string;
+    /** Auto-load the file on every agent/swarm run if it exists. Default: true */
+    autoLoad: boolean;
+  };
+  skills: {
+    /** Directories scanned for SKILL.md files on every run. */
+    directories: string[];
+    /** Skill names to disable globally. */
+    disabled: string[];
+  };
+  agents: {
+    /** Directories scanned for *.json custom agent definition files. */
+    directories: string[];
   };
 }
 
