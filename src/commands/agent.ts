@@ -1,3 +1,4 @@
+import { readFileSync, writeFileSync } from 'fs';
 import { Command } from 'commander';
 import { runAgentTask } from '../agents/executor.js';
 import { agentPool } from '../agents/pool.js';
@@ -14,7 +15,9 @@ export function registerAgent(program: Command): void {
   agent
     .command('spawn')
     .description('Spawn a Copilot agent and run a task')
-    .requiredOption('--task <task>', 'Task description to run')
+    .option('--task <task>', 'Task description to run')
+    .option('--spec <file>', 'Read task from a markdown/text file (alternative to --task)')
+    .option('--output <file>', 'Write result to a markdown file')
     .option('--type <type>', 'Agent type (default: auto-routed from task)')
     .option('--model <model>', 'Override the default model')
     .option('--timeout <ms>', 'Session timeout in ms', '120000')
@@ -24,7 +27,9 @@ export function registerAgent(program: Command): void {
     .option('--no-retry', 'Disable retries')
     .option('--stream', 'Stream output as it arrives')
     .action(async (opts: {
-      task: string;
+      task?: string;
+      spec?: string;
+      output?: string;
       type?: string;
       model?: string;
       timeout: string;
@@ -34,12 +39,21 @@ export function registerAgent(program: Command): void {
       retry: boolean;
       stream: boolean;
     }) => {
+      let task = opts.task ?? '';
+      if (opts.spec) {
+        task = readFileSync(opts.spec, 'utf-8').trim();
+      }
+      if (!task) {
+        output.error('Provide --task <text> or --spec <file>');
+        process.exit(1);
+      }
+
       const config = loadConfig();
-      const agentType: AgentType = (opts.type as AgentType | undefined) ?? routeTask(opts.task);
+      const agentType: AgentType = (opts.type as AgentType | undefined) ?? routeTask(task);
 
-      output.info(`${agentBadge(agentType)} Running: ${opts.task.slice(0, 80)}`);
+      output.info(`${agentBadge(agentType)} Running: ${task.slice(0, 80)}`);
 
-      const result = await runAgentTask(agentType, opts.task, {
+      const result = await runAgentTask(agentType, task, {
         model: opts.model ?? config.defaultModel,
         timeoutMs: parseInt(opts.timeout, 10),
         retryConfig: opts.retry === false
@@ -61,6 +75,10 @@ export function registerAgent(program: Command): void {
           `Done in ${result.durationMs}ms` +
           (result.attempts > 1 ? ` (${result.attempts} attempts)` : '')
         );
+        if (opts.output) {
+          writeFileSync(opts.output, `# Agent Output\n\n${result.output}\n`, 'utf-8');
+          output.success(`Result written to ${opts.output}`);
+        }
       } else {
         output.error(`Failed: ${result.error}`);
         process.exit(1);

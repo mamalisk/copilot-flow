@@ -8,7 +8,7 @@ copilot-flow brings the same multi-agent swarm patterns as Ruflo to the GitHub C
 
 ## Prerequisites
 
-- **Node.js** >= 20
+- **Node.js** >= 22.5
 - **GitHub Copilot CLI** (`copilot`) installed and authenticated
 - A GitHub account with Copilot access
 
@@ -42,6 +42,10 @@ copilot-flow agent spawn --type coder --task "Write a REST API endpoint for user
 # 3. Run a multi-agent swarm
 copilot-flow swarm start --task "Build a JWT authentication module" --stream
 
+# 4. Spec-driven: read task from a file, write results to a file
+copilot-flow agent spawn --spec requirements.md --output result.md
+copilot-flow swarm start --spec requirements.md --output result.md --topology hierarchical
+
 # 4. Check system health
 copilot-flow doctor
 ```
@@ -67,6 +71,12 @@ copilot-flow agent spawn --task "Fix the authentication bug" --stream
 # Specify the agent type explicitly
 copilot-flow agent spawn --type security-auditor --task "Audit the auth module"
 
+# Read task from a markdown file (spec-driven)
+copilot-flow agent spawn --spec requirements.md --type coder
+
+# Write result to a markdown file
+copilot-flow agent spawn --spec requirements.md --output result.md
+
 # With custom retry settings
 copilot-flow agent spawn --type coder --task "..." \
   --max-retries 5 \
@@ -86,6 +96,17 @@ copilot-flow agent types
 ```bash
 # Run a hierarchical swarm (researcher → coder → reviewer pipeline by default)
 copilot-flow swarm start --task "Implement OAuth2 login flow" --stream
+
+# Read task from a markdown file (spec-driven)
+copilot-flow swarm start --spec requirements.md --topology hierarchical
+
+# Write all agent results to a markdown file
+copilot-flow swarm start --spec requirements.md --output results.md
+
+# Chain phases: output of one run becomes the spec for the next
+copilot-flow swarm start --spec spec.md         --output phase1.md --topology mesh
+copilot-flow swarm start --spec phase1.md       --output phase2.md --topology sequential
+copilot-flow swarm start --spec phase2.md       --output phase3.md --topology hierarchical
 
 # Specify agent pipeline manually
 copilot-flow swarm start --task "..." --agents researcher,coder,tester,reviewer

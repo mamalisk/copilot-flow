@@ -1,3 +1,4 @@
+import { readFileSync, writeFileSync } from 'fs';
 import { Command } from 'commander';
 import { runSwarm } from '../swarm/coordinator.js';
 import { routeTask } from '../agents/registry.js';
@@ -28,7 +29,9 @@ export function registerSwarm(program: Command): void {
   swarm
     .command('start')
     .description('Run a multi-agent swarm for a task')
-    .requiredOption('--task <task>', 'High-level task to decompose across agents')
+    .option('--task <task>', 'High-level task to decompose across agents')
+    .option('--spec <file>', 'Read task from a markdown/text file (alternative to --task)')
+    .option('--output <file>', 'Write swarm results to a markdown file')
     .option('--topology <type>', 'Override topology for this run')
     .option('--agents <list>', 'Comma-separated agent types (e.g. researcher,coder,reviewer)')
     .option('--stream', 'Stream agent outputs as they arrive')
@@ -36,7 +39,9 @@ export function registerSwarm(program: Command): void {
     .option('--retry-delay <ms>', 'Initial retry delay in ms', '1000')
     .option('--retry-strategy <strategy>', 'Backoff strategy (exponential|linear|constant|fibonacci)', 'exponential')
     .action(async (opts: {
-      task: string;
+      task?: string;
+      spec?: string;
+      output?: string;
       topology?: string;
       agents?: string;
       stream: boolean;
@@ -44,9 +49,18 @@ export function registerSwarm(program: Command): void {
       retryDelay: string;
       retryStrategy: string;
     }) => {
+      let task = opts.task ?? '';
+      if (opts.spec) {
+        task = readFileSync(opts.spec, 'utf-8').trim();
+      }
+      if (!task) {
+        output.error('Provide --task <text> or --spec <file>');
+        process.exit(1);
+      }
+
       const config = loadConfig();
       const topology = (opts.topology ?? config.swarm.topology) as SwarmTopology;
-      const tasks = buildTaskList(opts.task, opts.agents, {
+      const tasks = buildTaskList(task, opts.agents, {
         maxAttempts: parseInt(opts.maxRetries, 10),
         initialDelayMs: parseInt(opts.retryDelay, 10),
         backoffStrategy: opts.retryStrategy as 'exponential' | 'linear' | 'constant' | 'fibonacci',
@@ -78,6 +92,17 @@ export function registerSwarm(program: Command): void {
           output.error(result.error ?? 'Unknown error');
         }
         output.blank();
+      }
+
+      if (opts.output) {
+        const lines: string[] = ['# Swarm Output\n'];
+        for (const [taskId, result] of results) {
+          lines.push(`## ${taskId} (${result.agentType})\n`);
+          lines.push(result.success ? result.output : `**FAILED**: ${result.error ?? 'unknown'}`);
+          lines.push('\n---\n');
+        }
+        writeFileSync(opts.output, lines.join('\n'), 'utf-8');
+        output.success(`Results written to ${opts.output}`);
       }
     });
 
