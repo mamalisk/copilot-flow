@@ -86,6 +86,13 @@ copilot-flow agent spawn --type coder --task "..." \
 # Disable retries entirely
 copilot-flow agent spawn --type coder --task "..." --no-retry
 
+# Override session timeout (default: 120 s — increase for large/complex tasks)
+copilot-flow agent spawn --task "..." --timeout 300000   # 5 minutes
+copilot-flow swarm start --spec big-task.md --timeout 600000  # 10 minutes
+
+# Verbose mode: see session lifecycle, model, prompt size, and retry events
+copilot-flow agent spawn --task "..." --verbose
+
 # List agent states
 copilot-flow agent list
 copilot-flow agent types
@@ -350,6 +357,7 @@ const result2 = await withRetry(
 {
   "version": "1.0.0",
   "defaultModel": "gpt-4o",
+  "defaultTimeoutMs": 120000,
   "swarm": {
     "topology": "hierarchical",
     "maxAgents": 8
@@ -375,8 +383,10 @@ const result2 = await withRetry(
 
 Environment variable overrides:
 ```bash
-GITHUB_TOKEN=ghp_...          # GitHub token (uses logged-in user by default)
+GITHUB_TOKEN=ghp_...                 # GitHub token (bypasses keychain on managed Macs)
+GH_TOKEN=$(gh auth token)           # Alternative: reuse the GitHub CLI token
 COPILOT_FLOW_DEFAULT_MODEL=gpt-4o
+COPILOT_FLOW_TIMEOUT_MS=300000      # Default session timeout in ms (default: 120000)
 COPILOT_FLOW_MAX_RETRIES=3
 COPILOT_FLOW_RETRY_DELAY_MS=1000
 COPILOT_FLOW_LOG_LEVEL=info   # debug | info | warn | error | silent
