@@ -127,6 +127,75 @@ copilot-flow swarm init --topology hierarchical --max-agents 8
 copilot-flow swarm status
 ```
 
+### `plan` / `exec` — phased pipelines
+
+For multi-phase projects where one swarm feeds into the next, use `plan` to generate
+a structured YAML plan from a spec, then `exec` to run it.
+
+```bash
+# 1. Generate a phases.yaml from a spec file
+copilot-flow plan spec.md                  # writes phases.yaml
+copilot-flow plan spec.md -f my-plan.yaml  # custom output file
+
+# 2. Execute all phases in order
+copilot-flow exec phases.yaml
+
+# 3. Execute a single phase (deps must already have output files on disk)
+copilot-flow exec phases.yaml --phase implement
+
+# 4. Re-run a phase even if its output file exists
+copilot-flow exec phases.yaml --phase implement --force
+
+# 5. Stream output as it arrives
+copilot-flow exec phases.yaml --stream
+```
+
+**How it works:**
+
+1. `plan` runs an `analyst` agent against your spec and produces a `phases.yaml` file.
+2. `exec` reads the plan, resolves execution order, and runs each phase:
+   - **`type: agent`** — single specialist agent
+   - **`type: swarm`** — multi-agent pipeline with a configurable topology
+3. Each phase writes its output to `phase-{id}.md` (or a custom filename set in the YAML).
+4. Each phase's prompt automatically includes the original spec **and** the output files of all its dependencies — so context flows through the pipeline automatically.
+5. If a phase output file already exists, `exec` skips it and moves on. Use `--force` to re-run.
+
+**`phases.yaml` format:**
+
+```yaml
+version: "1"
+spec: spec.md          # injected into every phase prompt
+phases:
+  - id: research
+    description: Investigate the problem domain and gather context.
+    type: agent
+    agentType: researcher
+    dependsOn: []
+
+  - id: design
+    description: Design the solution architecture based on the research.
+    type: swarm
+    topology: hierarchical
+    agents: [architect, analyst]
+    dependsOn: [research]
+
+  - id: implement
+    description: Implement the designed solution.
+    type: swarm
+    topology: hierarchical
+    agents: [coder, coder, tester]
+    dependsOn: [design]
+
+  - id: review
+    description: Review the implementation for quality and correctness.
+    type: agent
+    agentType: reviewer
+    output: final-review.md   # optional: override the default phase-{id}.md name
+    dependsOn: [implement]
+```
+
+---
+
 ### `memory`
 
 ```bash

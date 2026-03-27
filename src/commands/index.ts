@@ -11,6 +11,8 @@ import { registerHooks } from './hooks.js';
 import { registerRoute } from './route.js';
 import { registerStatus } from './status.js';
 import { registerDoctor } from './doctor.js';
+import { registerPlan } from './plan.js';
+import { registerExec } from './exec.js';
 
 const program = new Command();
 
@@ -31,5 +33,7 @@ registerHooks(program);
 registerRoute(program);
 registerStatus(program);
 registerDoctor(program);
+registerPlan(program);
+registerExec(program);
 
 program.parse(process.argv);

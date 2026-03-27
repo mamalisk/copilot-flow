@@ -37,9 +37,11 @@
     "commander": "^12.1.0",
     "dotenv": "^16.4.5",
     "gray-matter": "^4.0.3",
+    "js-yaml": "^4.1.1",
     "ora": "^8.1.1"
   },
   "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.0.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.5.4",

@@ -179,6 +179,34 @@ export interface CopilotFlowConfig {
   };
 }
 
+// ─── Plan / Exec Types ────────────────────────────────────────────────────────
+
+export interface PlanPhase {
+  /** Unique kebab-case identifier used for output filename and dependsOn references. */
+  id: string;
+  /** Human-readable description of what this phase should accomplish. */
+  description: string;
+  /** 'agent' runs a single specialist; 'swarm' runs a multi-agent pipeline. */
+  type: 'agent' | 'swarm';
+  /** Agent type (required when type is 'agent'). */
+  agentType?: AgentType;
+  /** Swarm topology (used when type is 'swarm'). Default: 'hierarchical'. */
+  topology?: SwarmTopology;
+  /** Agent types in the swarm pipeline (used when type is 'swarm'). */
+  agents?: AgentType[];
+  /** Output filename. Defaults to phase-{id}.md. */
+  output?: string;
+  /** IDs of phases that must complete before this one. */
+  dependsOn?: string[];
+}
+
+export interface Plan {
+  version: string;
+  /** Path to the original spec file — injected into every phase prompt. */
+  spec: string;
+  phases: PlanPhase[];
+}
+
 // ─── CLI Types ────────────────────────────────────────────────────────────────
 
 export interface CommandContext {
