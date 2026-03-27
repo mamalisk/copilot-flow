@@ -23,10 +23,11 @@ export function registerDoctor(program: Command): void {
 
       // ── Node.js version ──────────────────────────────────────────────────
       const nodeVersion = process.version;
-      const nodeMajor = parseInt(nodeVersion.slice(1), 10);
+      const [nodeMajor, nodeMinorRaw] = nodeVersion.slice(1).split('.').map(Number);
+      const nodeSatisfies = nodeMajor > 22 || (nodeMajor === 22 && nodeMinorRaw >= 5);
       checks.push({
-        name: 'Node.js >= 20',
-        ok: nodeMajor >= 20,
+        name: 'Node.js >= 22.5',
+        ok: nodeSatisfies,
         detail: nodeVersion,
       });
 
@@ -91,18 +92,19 @@ export function registerDoctor(program: Command): void {
         detail: isInitialised() ? '.copilot-flow/config.json found' : 'Run: copilot-flow init',
       });
 
-      // ── better-sqlite3 available ────────────────────────────────────────
+      // ── node:sqlite available (built-in since Node 22.5) ────────────────
       let sqliteOk = false;
       try {
-        require('better-sqlite3');
+        require('node:sqlite');
         sqliteOk = true;
       } catch {
         sqliteOk = false;
       }
+      const nodeMinor = parseInt(nodeVersion.split('.')[1] ?? '0', 10);
       checks.push({
-        name: 'better-sqlite3 available',
+        name: 'node:sqlite available',
         ok: sqliteOk,
-        detail: sqliteOk ? 'OK' : 'Run: npm install better-sqlite3',
+        detail: sqliteOk ? 'OK' : `Requires Node >= 22.5 (current: ${nodeVersion})`,
       });
 
       // ── Print results ───────────────────────────────────────────────────
