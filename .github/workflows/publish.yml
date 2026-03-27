@@ -37,7 +37,8 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
       - name: Bump version
-        run: npm version ${{ github.event.inputs.bump }} --message "chore: release v%s [skip ci]"
+        run: |
+          npm version "${{ inputs.bump }}" --message "chore: release v%s [skip ci]"
 
       - name: Push version commit and tag
         run: git push --follow-tags origin main
