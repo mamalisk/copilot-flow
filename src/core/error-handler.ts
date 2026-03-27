@@ -35,10 +35,10 @@ const PATTERNS: Array<{
   {
     test: msg =>
       msg.includes('copilot: command not found') ||
-      msg.includes('ENOENT') ||
+      msg.includes('enoent') ||
       msg.includes('cannot find') ||
       msg.includes('not installed') ||
-      msg.includes('spawn') && msg.includes('ENOENT'),
+      msg.includes('spawn') && msg.includes('enoent'),
     category: 'copilot_not_installed',
     retryable: false,
   },
@@ -100,7 +100,7 @@ const PATTERNS: Array<{
   },
   {
     test: msg =>
-      ['ECONNRESET', 'ETIMEDOUT', 'ECONNREFUSED', 'ENOTFOUND', 'EPIPE'].some(c =>
+      ['econnreset', 'etimedout', 'econnrefused', 'enotfound', 'epipe'].some(c =>
         msg.includes(c)
       ),
     category: 'network',

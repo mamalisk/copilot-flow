@@ -111,6 +111,7 @@ describe('withRetry', () => {
       jitter: false,
       retryOn: RetryPredicates.networkErrors,
     });
+    void promise.catch(() => {});
 
     await flush();
     await expect(promise).rejects.toThrow('ECONNRESET');
@@ -123,6 +124,7 @@ describe('withRetry', () => {
       maxAttempts: 3,
       retryOn: RetryPredicates.networkErrors, // 401 is not a network error
     });
+    void promise.catch(() => {});
 
     await flush();
     await expect(promise).rejects.toThrow('401 unauthorized');
@@ -154,6 +156,7 @@ describe('withRetry', () => {
   it('respects maxAttempts: 1 (no retries)', async () => {
     const fn = vi.fn().mockRejectedValue(new Error('ECONNRESET'));
     const promise = withRetry(fn, { maxAttempts: 1 });
+    void promise.catch(() => {});
 
     await flush();
     await expect(promise).rejects.toThrow();

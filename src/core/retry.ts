@@ -61,7 +61,7 @@ export function calculateDelay(attempt: number, config: RetryConfig): number {
       delay = initialDelayMs;
       break;
     case 'fibonacci':
-      delay = initialDelayMs * fib(attempt);
+      delay = initialDelayMs * fib(attempt - 1);
       break;
     default:
       delay = initialDelayMs;
