@@ -1,3 +1,5 @@
+import fs from 'fs';
+import path from 'path';
 import { Command } from 'commander';
 import { saveConfig, DEFAULT_CONFIG, isInitialised, ensureRuntimeDirs } from '../config.js';
 import { output } from '../output.js';
@@ -27,11 +29,26 @@ export function registerInit(program: Command): void {
       ensureRuntimeDirs();
       saveConfig(config);
 
+      // Create or update .gitignore to exclude .copilot-flow/
+      const gitignorePath = path.join(process.cwd(), '.gitignore');
+      const entry = '.copilot-flow/';
+      if (fs.existsSync(gitignorePath)) {
+        const existing = fs.readFileSync(gitignorePath, 'utf-8');
+        if (!existing.includes(entry)) {
+          fs.appendFileSync(gitignorePath, `\n${entry}\n`, 'utf-8');
+          output.dim('  .gitignore updated: added .copilot-flow/');
+        }
+      } else {
+        fs.writeFileSync(gitignorePath, `${entry}\n`, 'utf-8');
+        output.dim('  .gitignore created: added .copilot-flow/');
+      }
+
       output.success('Initialised copilot-flow');
       output.blank();
       output.print('  Config: .copilot-flow/config.json');
       output.print('  Memory: .copilot-flow/memory.db');
       output.print('  Agents: .copilot-flow/agents/');
+      output.print('  Plans:  .copilot-flow/plans/');
       output.blank();
       output.dim('Next: copilot-flow agent spawn --type coder --task "Your task"');
     });

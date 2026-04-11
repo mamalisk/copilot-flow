@@ -111,6 +111,20 @@ export async function runAgentTask(
           });
         }
 
+        // Always show progress events so users can see what the agent is doing
+        session.on('assistant.intent', (e: { data: { intent: string } }) => {
+          output.dim(`  [${agentType}] ${e.data.intent}`);
+        });
+        session.on('assistant.turn_start', (e: { data: { turnId: string } }) => {
+          output.dim(`  [${agentType}] Turn ${e.data.turnId}`);
+        });
+        session.on('tool.execution_start', (e: { data: { toolName: string } }) => {
+          output.dim(`  [${agentType}] → ${e.data.toolName}`);
+        });
+        session.on('tool.execution_progress', (e: { data: { progressMessage: string } }) => {
+          output.dim(`  [${agentType}]   ${e.data.progressMessage}`);
+        });
+
         output.debug(`[${agentType}] Sending prompt (${task.length} chars, timeout: ${timeoutMs}ms)`);
         const result = await session.sendAndWait({ prompt: task }, timeoutMs);
 

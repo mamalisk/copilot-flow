@@ -1,5 +1,7 @@
 # `copilot-flow swarm`
 
+← [Back to README](../../README.md)
+
 Orchestrate multiple agents working together on a shared task.
 
 ---
@@ -19,6 +21,7 @@ copilot-flow swarm start [options]
 | `--output <file>` | — | Write all results to a markdown file |
 | `--topology <type>` | from config | `hierarchical` \| `sequential` \| `mesh` |
 | `--agents <list>` | pipeline default | Comma-separated agent types |
+| `--model <model>` | from config | Model override for all agents in this swarm |
 | `--timeout <ms>` | from config | Session timeout per agent |
 | `--max-retries <n>` | `3` | Max retries per agent |
 | `--retry-delay <ms>` | `1000` | Initial retry delay |
@@ -30,6 +33,29 @@ copilot-flow swarm start [options]
 | `--disable-skill <name>` | — | Disable a skill (repeatable) |
 | `--agent-dir <path>` | — | Directory of custom agent definitions (repeatable) |
 | `--agent <name>` | — | Activate a custom agent for every session in the swarm |
+
+### Model resolution
+
+Each agent in the swarm resolves its model independently:
+
+```
+CLI --model  >  config.agents.models[agentType]  >  config.defaultModel  >  SDK default
+```
+
+This means you can give your reviewer a stronger model than your coder without changing the
+CLI invocation — just configure it once in `.copilot-flow/config.json`:
+
+```json
+{
+  "agents": {
+    "models": {
+      "reviewer": "o1-mini"
+    }
+  }
+}
+```
+
+Use `--model` to force all agents to the same model for a quick test run.
 
 ### Topologies
 
@@ -56,8 +82,14 @@ copilot-flow swarm start \
   --topology mesh \
   --agents security-auditor,performance-engineer,reviewer
 
+# Force a specific model for this run
+copilot-flow swarm start \
+  --spec feature-brief.md \
+  --agents researcher,coder,reviewer \
+  --model gpt-4o
+
 # Chain swarm phases using --spec / --output
-copilot-flow swarm start --spec prd.md         --output phase1-epics.md
+copilot-flow swarm start --spec prd.md          --output phase1-epics.md
 copilot-flow swarm start --spec phase1-epics.md --output phase2-stories.md
 copilot-flow swarm start --spec phase2-stories.md --output phase3-code.md
 

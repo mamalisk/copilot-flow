@@ -135,7 +135,7 @@ export function registerAgent(program: Command): void {
       output.info(`${agentBadge(agentType)} Running: ${task.slice(0, 80)}`);
 
       const runTask = () => runAgentTask(agentType, task, {
-        model: opts.model ?? config.defaultModel,
+        model: opts.model ?? config.agents.models?.[agentType] ?? config.defaultModel,
         timeoutMs: opts.timeout !== '120000' ? parseInt(opts.timeout, 10) : config.defaultTimeoutMs,
         retryConfig: opts.retry === false
           ? { maxAttempts: 1 }

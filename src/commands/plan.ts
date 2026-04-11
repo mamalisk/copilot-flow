@@ -1,4 +1,5 @@
-import { readFileSync, writeFileSync, existsSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
+import path from 'path';
 import { Command } from 'commander';
 import yaml from 'js-yaml';
 import { runAgentTask } from '../agents/executor.js';
@@ -54,6 +55,7 @@ phases:
     description: Review the implementation for quality and correctness.
     type: agent
     agentType: reviewer
+    model: ''       # optional — leave empty to use config.agents.models.reviewer or defaultModel
     dependsOn: [implement]
 \`\`\`
 
@@ -61,23 +63,33 @@ Specification to plan:
 ${specContent}`;
 }
 
+/** Build the default plan output path: .copilot-flow/plans/{spec-basename}-{timestamp}/phases.yaml */
+function defaultPlanFile(spec: string): string {
+  const base = path.basename(spec, path.extname(spec));
+  const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  return path.join('.copilot-flow', 'plans', `${base}-${ts}`, 'phases.yaml');
+}
+
 export function registerPlan(program: Command): void {
   program
     .command('plan <spec>')
     .description('Analyse a spec file and generate a phased execution plan (YAML)')
-    .option('-f, --file <path>', 'Output path for the plan file', 'phases.yaml')
+    .option('-f, --file <path>', 'Output path for the plan file (default: .copilot-flow/plans/{spec}-{ts}/phases.yaml)')
     .option('--model <model>', 'Model override')
-    .action(async (spec: string, opts: { file: string; model?: string }) => {
+    .action(async (spec: string, opts: { file?: string; model?: string }) => {
       if (!existsSync(spec)) {
         output.error(`Spec file not found: ${spec}`);
         process.exit(1);
       }
 
+      const outFile = opts.file ?? defaultPlanFile(spec);
+      mkdirSync(path.dirname(outFile), { recursive: true });
+
       const specContent = readFileSync(spec, 'utf-8').trim();
       const config = loadConfig();
 
       output.info(`Analysing spec: ${spec}`);
-      output.info(`Generating plan → ${opts.file}`);
+      output.info(`Generating plan → ${outFile}`);
       output.blank();
 
       const result = await runAgentTask('analyst', buildPlannerPrompt(specContent), {
@@ -122,9 +134,9 @@ export function registerPlan(program: Command): void {
         }
       }
 
-      writeFileSync(opts.file, yaml.dump(plan, { lineWidth: 100 }), 'utf-8');
+      writeFileSync(outFile, yaml.dump(plan, { lineWidth: 100 }), 'utf-8');
 
-      output.success(`Plan written to ${opts.file}`);
+      output.success(`Plan written to ${outFile}`);
       output.blank();
       output.print(`  ${plan.phases.length} phase(s):`);
       for (const phase of plan.phases) {

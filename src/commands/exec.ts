@@ -1,4 +1,5 @@
-import { readFileSync, writeFileSync, existsSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
+import path from 'path';
 import { Command } from 'commander';
 import yaml from 'js-yaml';
 import { runAgentTask } from '../agents/executor.js';
@@ -6,12 +7,32 @@ import { runSwarm } from '../swarm/coordinator.js';
 import { output, agentBadge } from '../output.js';
 import { loadConfig } from '../config.js';
 import { clientManager } from '../core/client-manager.js';
-import type { Plan, PlanPhase, SwarmTask } from '../types.js';
+import type { Plan, PlanPhase, SwarmTask, AgentType, CopilotFlowConfig } from '../types.js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function phaseOutputFile(phase: PlanPhase): string {
-  return phase.output ?? `phase-${phase.id}.md`;
+/**
+ * Resolve model for a specific agent type within a phase.
+ * Precedence (highest → lowest):
+ *   CLI --model  >  phase.model  >  config.agents.models[type]  >  config.defaultModel
+ */
+function resolveModel(
+  agentType: AgentType,
+  phase: PlanPhase,
+  cliModel: string,
+  config: CopilotFlowConfig,
+): string {
+  return (
+    cliModel ||
+    phase.model ||
+    config.agents.models?.[agentType] ||
+    config.defaultModel
+  );
+}
+
+function phaseOutputFile(phase: PlanPhase, planDir: string): string {
+  const filename = phase.output ?? `phase-${phase.id}.md`;
+  return path.join(planDir, filename);
 }
 
 /**
@@ -44,6 +65,7 @@ function buildPhasePrompt(
   phase: PlanPhase,
   plan: Plan,
   phaseResults: Map<string, string>,
+  planDir: string,
 ): string {
   const sections: string[] = [];
 
@@ -56,11 +78,10 @@ function buildPhasePrompt(
   for (const depId of phase.dependsOn ?? []) {
     const depPhase = plan.phases.find(p => p.id === depId);
     if (!depPhase) continue;
+    const depFile = phaseOutputFile(depPhase, planDir);
     const content =
       phaseResults.get(depId) ??
-      (existsSync(phaseOutputFile(depPhase))
-        ? readFileSync(phaseOutputFile(depPhase), 'utf-8').trim()
-        : null);
+      (existsSync(depFile) ? readFileSync(depFile, 'utf-8').trim() : null);
     if (content) {
       sections.push(`## Output from phase "${depId}"\n\n${content}`);
     }
@@ -140,6 +161,10 @@ export function registerExec(program: Command): void {
       const globalMaxRetries = parseInt(opts.maxAcceptanceRetries, 10);
       const phaseResults = new Map<string, string>();
 
+      // Phase output files live alongside the plan file
+      const planDir = path.dirname(path.resolve(planFile));
+      mkdirSync(planDir, { recursive: true });
+
       // Determine which phases to run
       let phasesToRun: PlanPhase[];
       if (opts.phase) {
@@ -158,7 +183,7 @@ export function registerExec(program: Command): void {
       output.blank();
 
       for (const phase of phasesToRun) {
-        const outFile = phaseOutputFile(phase);
+        const outFile = phaseOutputFile(phase, planDir);
 
         output.header(`Phase: ${phase.id}`);
         output.dim(phase.description);
@@ -177,7 +202,7 @@ export function registerExec(program: Command): void {
         let phaseOutput = '';
 
         while (attempt <= maxRetries) {
-          const prompt = buildPhasePrompt(phase, plan, phaseResults);
+          const prompt = buildPhasePrompt(phase, plan, phaseResults, planDir);
 
           // ── Run the phase (agent or swarm) ──────────────────────────────
           if (phase.type === 'swarm') {
@@ -191,7 +216,7 @@ export function registerExec(program: Command): void {
               agentType,
               prompt,
               dependsOn: i > 0 ? [`${phase.id}-task-${i}`] : undefined,
-              sessionOptions: { model, timeoutMs },
+              sessionOptions: { model: resolveModel(agentType, phase, model, config), timeoutMs },
             }));
 
             const results = await runSwarm(tasks, topology, {
@@ -213,7 +238,7 @@ export function registerExec(program: Command): void {
             output.info(`Agent: ${agentBadge(agentType)}`);
 
             const result = await runAgentTask(agentType, prompt, {
-              model,
+              model: resolveModel(agentType, phase, model, config),
               timeoutMs,
               onChunk: opts.stream ? chunk => process.stdout.write(chunk) : undefined,
             });
@@ -231,7 +256,12 @@ export function registerExec(program: Command): void {
 
           if (opts.stream) output.blank();
           output.dim(`  Checking acceptance criteria (attempt ${attempt + 1}/${maxRetries + 1})…`);
-          const check = await runAcceptanceCheck(phase.acceptanceCriteria, phaseOutput, timeoutMs, model);
+          const check = await runAcceptanceCheck(
+            phase.acceptanceCriteria,
+            phaseOutput,
+            timeoutMs,
+            resolveModel('reviewer', phase, model, config),
+          );
 
           if (check.pass) {
             output.dim('  Acceptance: PASS');

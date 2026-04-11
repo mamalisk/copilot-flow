@@ -80,6 +80,7 @@ export function registerSwarm(program: Command): void {
     .option('--agent-dir <path>', 'Directory of *.json custom agent definitions (repeatable)',
       (val, prev: string[]) => [...prev, val], [] as string[])
     .option('--agent <name>', 'Name of custom agent to activate for every session in this swarm')
+    .option('--model <model>', 'Model override for all agents in this swarm')
     .option('--timeout <ms>', 'Session timeout per agent in ms (default: from config, fallback 120000)')
     .action(async (opts: {
       task?: string;
@@ -87,6 +88,7 @@ export function registerSwarm(program: Command): void {
       output?: string;
       topology?: string;
       agents?: string;
+      model?: string;
       stream: boolean;
       maxRetries: string;
       retryDelay: string;
@@ -138,7 +140,13 @@ export function registerSwarm(program: Command): void {
         backoffStrategy: opts.retryStrategy as 'exponential' | 'linear' | 'constant' | 'fibonacci',
       };
 
-      const tasks = buildTaskList(task, opts.agents, retryConfig, sessionOptions);
+      const tasks = buildTaskList(task, opts.agents, retryConfig, sessionOptions).map(t => ({
+        ...t,
+        sessionOptions: {
+          ...t.sessionOptions,
+          model: opts.model ?? config.agents.models?.[t.agentType] ?? config.defaultModel ?? undefined,
+        },
+      }));
 
       output.header(`Swarm: ${topology}`);
       output.dim(`Pipeline: ${tasks.map(t => t.agentType).join(' → ')}`);

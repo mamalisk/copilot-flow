@@ -1,5 +1,7 @@
 # `copilot-flow memory`
 
+← [Back to README](../../README.md)
+
 Persistent SQLite key-value store, namespaced per project.
 Use it to pass context between separate `agent` and `swarm` runs without re-reading files.
 
@@ -55,6 +57,13 @@ Delete all entries in a namespace.
 ```bash
 copilot-flow memory clear --namespace <ns>
 ```
+
+---
+
+## Storage location
+
+Memory is persisted in `.copilot-flow/memory.db` (SQLite). The path is configurable in
+`.copilot-flow/config.json` under `memory.path`. The file is created automatically on first use.
 
 ---
 

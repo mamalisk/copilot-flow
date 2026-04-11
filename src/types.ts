@@ -178,6 +178,12 @@ export interface CopilotFlowConfig {
   agents: {
     /** Directories scanned for *.json custom agent definition files. */
     directories: string[];
+    /**
+     * Per-agent-type model overrides. Applied when no CLI --model flag or
+     * per-phase model is set. Useful for giving the reviewer a stronger model.
+     * Example: { "reviewer": "o1-mini", "security-auditor": "o1" }
+     */
+    models: Partial<Record<AgentType, string>>;
   };
 }
 
@@ -200,6 +206,12 @@ export interface PlanPhase {
   output?: string;
   /** IDs of phases that must complete before this one. */
   dependsOn?: string[];
+  /**
+   * Model override for this phase. Takes precedence over per-agent-type config
+   * and config.defaultModel, but is overridden by the CLI --model flag.
+   * Leave unset to use per-agent-type config or the global default.
+   */
+  model?: string;
   /**
    * Natural-language description of what the output must contain or achieve.
    * When set, a reviewer agent evaluates the output before the phase is marked

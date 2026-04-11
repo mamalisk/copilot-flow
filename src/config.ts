@@ -42,6 +42,7 @@ export const DEFAULT_CONFIG: CopilotFlowConfig = {
   },
   agents: {
     directories: [],
+    models: {},
   },
 };
 
@@ -93,7 +94,11 @@ function mergeConfig(
     hooks:        { ...base.hooks,        ...(override.hooks        ?? {}) },
     instructions: { ...base.instructions, ...(override.instructions ?? {}) },
     skills:       { ...base.skills,       ...(override.skills       ?? {}) },
-    agents:       { ...base.agents,       ...(override.agents       ?? {}) },
+    agents: {
+      ...base.agents,
+      ...(override.agents ?? {}),
+      models: { ...base.agents.models, ...(override.agents?.models ?? {}) },
+    },
   };
 }
 
@@ -105,7 +110,7 @@ export function isInitialised(cwd = process.cwd()): boolean {
 /** Ensure the .copilot-flow/ runtime directories exist. */
 export function ensureRuntimeDirs(cwd = process.cwd()): void {
   const base = path.join(cwd, CONFIG_DIR);
-  for (const sub of ['', 'agents', 'swarm']) {
+  for (const sub of ['', 'agents', 'plans']) {
     const dir = path.join(base, sub);
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });

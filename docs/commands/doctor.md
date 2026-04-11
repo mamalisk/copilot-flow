@@ -1,4 +1,6 @@
-# `copilot-flow doctor` & `copilot-flow status`
+# `copilot-flow doctor` & `copilot-flow models` & `copilot-flow init` & `copilot-flow status`
+
+← [Back to README](../../README.md)
 
 ---
 
@@ -21,6 +23,8 @@ Runs the following checks in order:
 | copilot-flow initialised | `.copilot-flow/config.json` exists | `copilot-flow init` |
 | node:sqlite available | Built-in SQLite module accessible | Requires Node >= 22.5 |
 
+`--verbose` runs all checks and then prints the full list of available models (same as `copilot-flow models`).
+
 ### Enterprise / managed Mac fix
 
 If the authentication check fails with a keychain prompt timing out:
@@ -40,7 +44,7 @@ echo 'export GH_TOKEN=$(gh auth token)' >> ~/.zshrc
 
 ## `models`
 
-List the models available on your Copilot plan and see which one is currently configured as the default.
+List the models available on your Copilot plan and see which one is configured as the default.
 
 ```bash
 copilot-flow models
@@ -54,6 +58,7 @@ Available models:
   gpt-4o                         GPT-4o
   gpt-4o-mini                    GPT-4o Mini
   o3-mini                        o3-mini
+  o1-mini                        o1-mini
 
   To pin a default: export COPILOT_FLOW_DEFAULT_MODEL=<id>
                     or set "defaultModel" in .copilot-flow/config.json
@@ -77,11 +82,34 @@ Prints the active config values from `.copilot-flow/config.json` (or defaults if
 
 ## `init`
 
-Scaffold a `.copilot-flow/config.json` with defaults.
+Scaffold a `.copilot-flow/config.json` with defaults, create the runtime directories, and
+add `.copilot-flow/` to `.gitignore`.
 
 ```bash
 copilot-flow init
 copilot-flow init --model gpt-4o --topology hierarchical --max-agents 6
+```
+
+> **Auto-init**: If `.copilot-flow/config.json` does not exist, any command other than
+> `init`, `doctor`, and `status` will silently run init with defaults before proceeding.
+> You only need to run `init` explicitly when you want to customise the options.
+
+### Options
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--model <model>` | `''` (SDK default) | Default model for all agents |
+| `--max-agents <n>` | `8` | Maximum concurrent agents in a swarm |
+| `--topology <type>` | `hierarchical` | Default swarm topology |
+
+### Runtime directories created
+
+```
+.copilot-flow/
+├── config.json        — configuration
+├── memory.db          — SQLite memory store
+├── agents/            — agent state files (agent list)
+└── plans/             — plan folders (plan + exec output)
 ```
 
 ### Full config reference
@@ -89,7 +117,7 @@ copilot-flow init --model gpt-4o --topology hierarchical --max-agents 6
 ```json
 {
   "version": "1.0.0",
-  "defaultModel": "gpt-4o",
+  "defaultModel": "",
   "defaultTimeoutMs": 120000,
   "swarm": {
     "topology": "hierarchical",
@@ -115,23 +143,30 @@ copilot-flow init --model gpt-4o --topology hierarchical --max-agents 6
     "autoLoad": true
   },
   "skills": {
-    "directories": [".copilot/skills", ".github"],
+    "directories": [],
     "disabled": []
   },
   "agents": {
-    "directories": [".copilot/agents"]
+    "directories": [],
+    "models": {
+      "reviewer":         "o1-mini",
+      "security-auditor": "o1"
+    }
   }
 }
 ```
 
+`agents.models` is optional — only set the agent types you want to pin to a specific model.
+Leave `defaultModel` empty to let the Copilot CLI choose automatically based on your plan.
+
 ### Environment variable overrides
 
 ```bash
-GITHUB_TOKEN=ghp_...                  # GitHub PAT (bypasses keychain)
-GH_TOKEN=$(gh auth token)             # GitHub CLI token
+GITHUB_TOKEN=ghp_...                          # GitHub PAT (bypasses keychain)
+GH_TOKEN=$(gh auth token)                     # GitHub CLI token
 COPILOT_FLOW_DEFAULT_MODEL=claude-sonnet-4-5  # Default model (omit to let Copilot CLI choose)
-COPILOT_FLOW_TIMEOUT_MS=300000        # Default session timeout (ms)
-COPILOT_FLOW_MAX_RETRIES=3            # Default retry attempts
-COPILOT_FLOW_RETRY_DELAY_MS=1000      # Initial retry delay (ms)
-COPILOT_FLOW_LOG_LEVEL=debug          # debug | info | warn | error | silent
+COPILOT_FLOW_TIMEOUT_MS=300000                # Default session timeout (ms)
+COPILOT_FLOW_MAX_RETRIES=3                    # Default retry attempts
+COPILOT_FLOW_RETRY_DELAY_MS=1000              # Initial retry delay (ms)
+COPILOT_FLOW_LOG_LEVEL=debug                  # debug | info | warn | error | silent
 ```

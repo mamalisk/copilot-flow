@@ -15,6 +15,8 @@ import { registerStatus } from './status.js';
 import { registerDoctor } from './doctor.js';
 import { registerPlan } from './plan.js';
 import { registerExec } from './exec.js';
+import { isInitialised, ensureRuntimeDirs, saveConfig, DEFAULT_CONFIG } from '../config.js';
+import { output } from '../output.js';
 
 const program = new Command();
 
@@ -37,5 +39,20 @@ registerStatus(program);
 registerDoctor(program);
 registerPlan(program);
 registerExec(program);
+
+// Auto-init: if .copilot-flow/config.json is missing and the command is not
+// one of the exempt commands, silently initialise with defaults before running.
+const SKIP_AUTO_INIT = new Set(['init', 'doctor', 'status']);
+const firstArg = process.argv[2] ?? '';
+const isExempt =
+  firstArg === '' ||
+  firstArg.startsWith('-') || // --version, --help, etc.
+  SKIP_AUTO_INIT.has(firstArg);
+
+if (!isExempt && !isInitialised()) {
+  output.dim('  Auto-initialising .copilot-flow/ (run "copilot-flow init" to customise)');
+  ensureRuntimeDirs();
+  saveConfig(DEFAULT_CONFIG);
+}
 
 program.parse(process.argv);
