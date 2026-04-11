@@ -9,7 +9,8 @@
   },
   "files": [
     "dist/",
-    "bin/"
+    "bin/",
+    "copilot-flow.png"
   ],
   "scripts": {
     "build": "tsc",

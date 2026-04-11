@@ -1,5 +1,9 @@
 # copilot-flow
 
+<p align="center">
+  <img src="./copilot-flow.png" alt="copilot-flow logo" width="480" />
+</p>
+
 Multi-agent orchestration framework for **GitHub Copilot CLI** — inspired by [Ruflo (claude-flow)](https://github.com/ruvnet/claude-flow).
 
 copilot-flow brings the same multi-agent swarm patterns as Ruflo to the GitHub Copilot ecosystem, using the official [`@github/copilot-sdk`](https://github.com/github/copilot-sdk) to programmatically control the `copilot` CLI.
@@ -190,8 +194,21 @@ phases:
     description: Review the implementation for quality and correctness.
     type: agent
     agentType: reviewer
-    output: final-review.md   # optional: override the default phase-{id}.md name
+    output: final-review.md      # optional: override the default phase-{id}.md name
+    acceptanceCriteria: >
+      Must list all findings by severity (critical/high/medium/low) and include
+      at least one concrete remediation step per finding.
+    maxAcceptanceRetries: 1      # optional: override the global --max-acceptance-retries
     dependsOn: [implement]
+```
+
+**Acceptance criteria** are an optional quality gate per phase. When set, a reviewer
+agent evaluates the output and returns PASS or FAIL with an explanation. On FAIL the
+phase is re-run automatically (up to `maxAcceptanceRetries` additional times, default 2).
+
+```bash
+# Override the retry limit globally for the run
+copilot-flow exec phases.yaml --max-acceptance-retries 3
 ```
 
 ---

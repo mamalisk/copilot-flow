@@ -198,6 +198,14 @@ export interface PlanPhase {
   output?: string;
   /** IDs of phases that must complete before this one. */
   dependsOn?: string[];
+  /**
+   * Natural-language description of what the output must contain or achieve.
+   * When set, a reviewer agent evaluates the output before the phase is marked
+   * complete. On failure the phase is re-run up to maxAcceptanceRetries times.
+   */
+  acceptanceCriteria?: string;
+  /** Max additional attempts on acceptance failure. Default: 2 (3 total). */
+  maxAcceptanceRetries?: number;
 }
 
 export interface Plan {

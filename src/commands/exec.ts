@@ -71,6 +71,32 @@ function buildPhasePrompt(
   return sections.join('\n\n---\n\n');
 }
 
+/**
+ * Ask a reviewer agent whether the phase output meets the acceptance criteria.
+ * Returns { pass, reason } — reason is the reviewer's explanation.
+ */
+async function runAcceptanceCheck(
+  criteria: string,
+  phaseOutput: string,
+  timeoutMs: number,
+): Promise<{ pass: boolean; reason: string }> {
+  const prompt =
+    `Evaluate whether the following output meets the acceptance criteria.\n` +
+    `Respond with PASS or FAIL on the first line, followed by a brief explanation.\n\n` +
+    `Acceptance criteria:\n${criteria}\n\n` +
+    `Output to evaluate:\n${phaseOutput}`;
+
+  const result = await runAgentTask('reviewer', prompt, { timeoutMs });
+  if (!result.success) {
+    return { pass: false, reason: result.error ?? 'Reviewer agent failed' };
+  }
+
+  const lines = result.output.trim().split('\n');
+  const pass = lines[0].trim().toUpperCase().startsWith('PASS');
+  const reason = lines.slice(1).join('\n').trim();
+  return { pass, reason };
+}
+
 // ─── Command ──────────────────────────────────────────────────────────────────
 
 export function registerExec(program: Command): void {
@@ -80,11 +106,13 @@ export function registerExec(program: Command): void {
     .option('--phase <id>', 'Run only this phase (dependency output files must exist on disk)')
     .option('--force', 'Re-run phases even if their output file already exists')
     .option('--timeout <ms>', 'Session timeout per agent in ms (overrides config)')
+    .option('--max-acceptance-retries <n>', 'Max re-runs on acceptance failure (default: 2)', '2')
     .option('--stream', 'Stream agent output as it arrives')
     .action(async (planFile: string, opts: {
       phase?: string;
       force: boolean;
       timeout?: string;
+      maxAcceptanceRetries: string;
       stream: boolean;
     }) => {
       if (!existsSync(planFile)) {
@@ -105,6 +133,7 @@ export function registerExec(program: Command): void {
 
       const config = loadConfig();
       const timeoutMs = opts.timeout ? parseInt(opts.timeout, 10) : config.defaultTimeoutMs;
+      const globalMaxRetries = parseInt(opts.maxAcceptanceRetries, 10);
       const phaseResults = new Map<string, string>();
 
       // Determine which phases to run
@@ -139,52 +168,81 @@ export function registerExec(program: Command): void {
           continue;
         }
 
-        const prompt = buildPhasePrompt(phase, plan, phaseResults);
-        let phaseOutput: string;
+        const maxRetries = phase.maxAcceptanceRetries ?? globalMaxRetries;
+        let attempt = 0;
+        let phaseOutput = '';
 
-        if (phase.type === 'swarm') {
-          const topology = phase.topology ?? 'hierarchical';
-          const agentTypes = phase.agents ?? ['researcher', 'coder', 'reviewer'];
+        while (attempt <= maxRetries) {
+          const prompt = buildPhasePrompt(phase, plan, phaseResults);
 
-          output.info(`Swarm (${topology}): ${agentTypes.map(a => agentBadge(a)).join(' → ')}`);
+          // ── Run the phase (agent or swarm) ──────────────────────────────
+          if (phase.type === 'swarm') {
+            const topology = phase.topology ?? 'hierarchical';
+            const agentTypes = phase.agents ?? ['researcher', 'coder', 'reviewer'];
 
-          const tasks: SwarmTask[] = agentTypes.map((agentType, i) => ({
-            id: `${phase.id}-task-${i + 1}`,
-            agentType,
-            prompt,
-            dependsOn: i > 0 ? [`${phase.id}-task-${i}`] : undefined,
-            sessionOptions: { timeoutMs },
-          }));
+            output.info(`Swarm (${topology}): ${agentTypes.map(a => agentBadge(a)).join(' → ')}`);
 
-          const results = await runSwarm(tasks, topology, {
-            onProgress: opts.stream
-              ? (_taskId, agentType, chunk) => process.stdout.write(`${agentBadge(agentType)} ${chunk}`)
-              : undefined,
-          });
+            const tasks: SwarmTask[] = agentTypes.map((agentType, i) => ({
+              id: `${phase.id}-task-${i + 1}`,
+              agentType,
+              prompt,
+              dependsOn: i > 0 ? [`${phase.id}-task-${i}`] : undefined,
+              sessionOptions: { timeoutMs },
+            }));
 
-          const last = results.get(tasks[tasks.length - 1].id);
-          if (!last?.success) {
-            output.error(`Phase "${phase.id}" failed: ${last?.error ?? 'unknown error'}`);
+            const results = await runSwarm(tasks, topology, {
+              onProgress: opts.stream
+                ? (_taskId, agentType, chunk) => process.stdout.write(`${agentBadge(agentType)} ${chunk}`)
+                : undefined,
+            });
+
+            const last = results.get(tasks[tasks.length - 1].id);
+            if (!last?.success) {
+              output.error(`Phase "${phase.id}" failed: ${last?.error ?? 'unknown error'}`);
+              await clientManager.shutdown();
+              process.exit(1);
+            }
+            phaseOutput = last.output;
+
+          } else {
+            const agentType = phase.agentType ?? 'analyst';
+            output.info(`Agent: ${agentBadge(agentType)}`);
+
+            const result = await runAgentTask(agentType, prompt, {
+              timeoutMs,
+              onChunk: opts.stream ? chunk => process.stdout.write(chunk) : undefined,
+            });
+
+            if (!result.success) {
+              output.error(`Phase "${phase.id}" failed: ${result.error}`);
+              await clientManager.shutdown();
+              process.exit(1);
+            }
+            phaseOutput = result.output;
+          }
+
+          // ── Acceptance check (if criteria defined) ──────────────────────
+          if (!phase.acceptanceCriteria) break;
+
+          if (opts.stream) output.blank();
+          output.dim(`  Checking acceptance criteria (attempt ${attempt + 1}/${maxRetries + 1})…`);
+          const check = await runAcceptanceCheck(phase.acceptanceCriteria, phaseOutput, timeoutMs);
+
+          if (check.pass) {
+            output.dim('  Acceptance: PASS');
+            break;
+          }
+
+          attempt++;
+          if (attempt > maxRetries) {
+            output.error(`Phase "${phase.id}" failed acceptance after ${maxRetries + 1} attempt(s).`);
+            if (check.reason) output.dim(`  Reason: ${check.reason}`);
             await clientManager.shutdown();
             process.exit(1);
           }
-          phaseOutput = last.output;
 
-        } else {
-          const agentType = phase.agentType ?? 'analyst';
-          output.info(`Agent: ${agentBadge(agentType)}`);
-
-          const result = await runAgentTask(agentType, prompt, {
-            timeoutMs,
-            onChunk: opts.stream ? chunk => process.stdout.write(chunk) : undefined,
-          });
-
-          if (!result.success) {
-            output.error(`Phase "${phase.id}" failed: ${result.error}`);
-            await clientManager.shutdown();
-            process.exit(1);
-          }
-          phaseOutput = result.output;
+          output.warn(`  Acceptance: FAIL — ${check.reason}`);
+          output.info(`  Retrying phase (attempt ${attempt + 1}/${maxRetries + 1})…`);
         }
 
         writeFileSync(outFile, `# Phase: ${phase.id}\n\n${phaseOutput}\n`, 'utf-8');
