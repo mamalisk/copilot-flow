@@ -49,15 +49,31 @@ describe('runAgentTask', () => {
     expect(result.durationMs).toBeGreaterThanOrEqual(0);
   });
 
-  it('creates a session with the correct model', async () => {
+  it('creates a session with the correct system message', async () => {
     await runAgentTask('coder', 'Test task');
 
     expect(mockCreateSession).toHaveBeenCalledWith(
       expect.objectContaining({
-        model: 'gpt-4o',
         systemMessage: expect.objectContaining({ content: expect.stringContaining('expert software engineer') }),
       })
     );
+  });
+
+  it('passes model to createSession when explicitly provided', async () => {
+    await runAgentTask('coder', 'Test task', { model: 'claude-sonnet-4-5' });
+
+    expect(mockCreateSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        model: 'claude-sonnet-4-5',
+      })
+    );
+  });
+
+  it('omits model from createSession when none is configured', async () => {
+    await runAgentTask('coder', 'Test task');
+
+    const callArg = mockCreateSession.mock.calls[0][0] as Record<string, unknown>;
+    expect(callArg).not.toHaveProperty('model');
   });
 
   it('disconnects the session after completion', async () => {
