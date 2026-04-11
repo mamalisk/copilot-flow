@@ -67,7 +67,9 @@ const PATTERNS: Array<{
     test: msg =>
       msg.includes('404') ||
       msg.includes('not found') ||
-      msg.includes('unknown model'),
+      msg.includes('unknown model') ||
+      msg.includes('not available') ||
+      msg.includes('model') && msg.includes('unavailable'),
     category: 'not_found',
     retryable: false,
   },

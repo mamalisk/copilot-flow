@@ -48,7 +48,9 @@ export async function runAgentTask(
   options: RunTaskOptions = {}
 ): Promise<AgentResult> {
   const def = getAgentDefinition(agentType);
-  const model = options.model ?? def.model;
+  // Use explicitly passed model, then agent registry default, then config default.
+  // Empty string means "let the Copilot CLI choose" — omitted from createSession entirely.
+  const model = options.model || def.model || '';
   const timeoutMs = options.timeoutMs ?? 120_000;
   const startTime = Date.now();
   let attempts = 0;
@@ -66,10 +68,10 @@ export async function runAgentTask(
       async () => {
         attempts++;
         const client = await clientManager.getClient();
-        output.debug(`[${agentType}] Creating session (model: ${model}, attempt: ${attempts})`);
+        output.debug(`[${agentType}] Creating session (model: ${model || 'default'}, attempt: ${attempts})`);
 
         const session = await client.createSession({
-          model,
+          ...(model && { model }),
           onPermissionRequest: approveAll,
 
           // Repo instructions go into the dedicated custom_instructions section so
@@ -146,6 +148,13 @@ export async function runAgentTask(
       output.dim('  →   export GITHUB_TOKEN=<your-pat>   # GitHub PAT with Copilot access');
       output.dim('  →   export GH_TOKEN=$(gh auth token)  # if gh CLI is already authenticated');
       output.dim('  → On personal machines: run: copilot login');
+    } else if (classified.category === 'not_found' && classified.message.toLowerCase().includes('model')) {
+      output.dim(`  → Model "${model}" is not available on your Copilot plan.`);
+      output.dim('  → Try a different model with --model <name>, e.g.:');
+      output.dim('  →   --model claude-sonnet-4-5');
+      output.dim('  →   --model gpt-4o-mini');
+      output.dim('  →   --model o3-mini');
+      output.dim('  → Or set a permanent default: COPILOT_FLOW_DEFAULT_MODEL=<name>');
     } else if (classified.category === 'copilot_not_installed') {
       output.dim('  → Install the Copilot CLI: https://github.com/github/copilot');
     }

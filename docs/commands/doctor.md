@@ -104,7 +104,7 @@ copilot-flow init --model gpt-4o --topology hierarchical --max-agents 6
 ```bash
 GITHUB_TOKEN=ghp_...                  # GitHub PAT (bypasses keychain)
 GH_TOKEN=$(gh auth token)             # GitHub CLI token
-COPILOT_FLOW_DEFAULT_MODEL=gpt-4o     # Default model
+COPILOT_FLOW_DEFAULT_MODEL=claude-sonnet-4-5  # Default model (omit to let Copilot CLI choose)
 COPILOT_FLOW_TIMEOUT_MS=300000        # Default session timeout (ms)
 COPILOT_FLOW_MAX_RETRIES=3            # Default retry attempts
 COPILOT_FLOW_RETRY_DELAY_MS=1000      # Initial retry delay (ms)

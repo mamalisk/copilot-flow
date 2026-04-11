@@ -3,6 +3,8 @@
  */
 
 import { Command } from 'commander';
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { version } = require('../../package.json') as { version: string };
 import { registerInit } from './init.js';
 import { registerAgent } from './agent.js';
 import { registerSwarm } from './swarm.js';
@@ -22,7 +24,7 @@ program
     'Multi-agent orchestration framework for GitHub Copilot CLI\n' +
     'Inspired by Ruflo (claude-flow) — https://github.com/ruvnet/claude-flow'
   )
-  .version('1.0.0');
+  .version(version);
 
 // Register all commands
 registerInit(program);

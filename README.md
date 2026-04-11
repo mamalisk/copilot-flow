@@ -326,6 +326,25 @@ See [docs/custom-agents-example.md](docs/custom-agents-example.md) for a full wo
 
 ---
 
+## Model selection
+
+By default copilot-flow lets the Copilot CLI choose the model, so you don't need to configure anything. If you want to pin a specific model, or you see a **"model X is not available"** error:
+
+```bash
+# Per-run override
+copilot-flow agent spawn --task "..." --model claude-sonnet-4-5
+
+# Permanent default via environment variable
+export COPILOT_FLOW_DEFAULT_MODEL=claude-sonnet-4-5
+
+# Permanent default via config file (.copilot-flow/config.json)
+{ "defaultModel": "claude-sonnet-4-5" }
+```
+
+Which models are available depends on your GitHub Copilot plan. Common options include `claude-sonnet-4-5`, `gpt-4o`, `gpt-4o-mini`, and `o3-mini`. If a model name is rejected, try another or omit `--model` entirely to use your plan's default.
+
+---
+
 ## Enterprise & managed Macs
 
 If authentication fails with a macOS keychain prompt timing out:
