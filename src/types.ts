@@ -60,6 +60,8 @@ export interface AgentResult {
  * All fields are optional — omitting them uses SDK defaults.
  */
 export interface SessionExtensions {
+  /** Model override — takes precedence over the agent registry and config default. */
+  model?: string;
   /** Session timeout in ms. Overrides the executor default (120 000). */
   timeoutMs?: number;
   /** Content of a repo instructions file, injected into the custom_instructions section. */

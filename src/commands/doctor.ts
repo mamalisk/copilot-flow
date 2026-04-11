@@ -1,8 +1,9 @@
 import { Command } from 'commander';
 import { execSync } from 'child_process';
 import { output, printTable } from '../output.js';
-import { isInitialised } from '../config.js';
+import { isInitialised, loadConfig } from '../config.js';
 import { clientManager } from '../core/client-manager.js';
+import type { ModelInfo } from '@github/copilot-sdk';
 
 interface Check {
   name: string;
@@ -10,7 +11,49 @@ interface Check {
   detail: string;
 }
 
+async function fetchModels(): Promise<ModelInfo[]> {
+  const client = await clientManager.getClient();
+  return client.listModels();
+}
+
+function printModels(models: ModelInfo[], configuredDefault: string): void {
+  output.blank();
+  output.print('  Available models:');
+  output.blank();
+  for (const m of models) {
+    const isDefault = m.id === configuredDefault;
+    const tag = isDefault ? ' ← configured default' : '';
+    output.print(`    ${m.id.padEnd(30)} ${m.name}${tag}`);
+  }
+  output.blank();
+  if (!configuredDefault) {
+    output.dim('  No default model set — Copilot CLI will choose automatically.');
+    output.dim('  To pin one: export COPILOT_FLOW_DEFAULT_MODEL=<id>');
+    output.dim('              or set "defaultModel" in .copilot-flow/config.json');
+  }
+}
+
 export function registerDoctor(program: Command): void {
+  // ── models subcommand ──────────────────────────────────────────────────────
+  program
+    .command('models')
+    .description('List models available on your Copilot plan')
+    .action(async () => {
+      output.header('Available models');
+      const config = loadConfig();
+      try {
+        const models = await fetchModels();
+        printModels(models, config.defaultModel);
+      } catch (err) {
+        output.error(`Could not fetch models: ${err instanceof Error ? err.message : String(err)}`);
+        output.dim('  → Is the Copilot CLI authenticated? Run: copilot-flow doctor');
+        await clientManager.shutdown();
+        process.exit(1);
+      }
+      await clientManager.shutdown();
+      process.exit(0);
+    });
+
   program
     .command('doctor')
     .description('Check system health and prerequisites')
@@ -115,7 +158,22 @@ export function registerDoctor(program: Command): void {
         output.success('All checks passed — copilot-flow is ready!');
       } else {
         output.warn(`${failed.length} check(s) failed. See details above.`);
-        process.exit(1);
       }
+
+      // ── Show available models when authenticated and --verbose ──────────
+      if (opts.verbose && sdkPing) {
+        try {
+          const config = loadConfig();
+          const models = await fetchModels();
+          printModels(models, config.defaultModel);
+        } catch {
+          // non-fatal — doctor results already shown
+        }
+      } else if (sdkPing) {
+        output.dim('  Tip: run with --verbose to see available models');
+      }
+
+      await clientManager.shutdown();
+      process.exit(failed.length > 0 ? 1 : 0);
     });
 }

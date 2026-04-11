@@ -79,6 +79,7 @@ async function runAcceptanceCheck(
   criteria: string,
   phaseOutput: string,
   timeoutMs: number,
+  model: string,
 ): Promise<{ pass: boolean; reason: string }> {
   const prompt =
     `Evaluate whether the following output meets the acceptance criteria.\n` +
@@ -86,7 +87,7 @@ async function runAcceptanceCheck(
     `Acceptance criteria:\n${criteria}\n\n` +
     `Output to evaluate:\n${phaseOutput}`;
 
-  const result = await runAgentTask('reviewer', prompt, { timeoutMs });
+  const result = await runAgentTask('reviewer', prompt, { timeoutMs, model });
   if (!result.success) {
     return { pass: false, reason: result.error ?? 'Reviewer agent failed' };
   }
@@ -105,12 +106,14 @@ export function registerExec(program: Command): void {
     .description('Execute a phased plan — all phases or a single one')
     .option('--phase <id>', 'Run only this phase (dependency output files must exist on disk)')
     .option('--force', 'Re-run phases even if their output file already exists')
+    .option('--model <model>', 'Model override for all agents in this run')
     .option('--timeout <ms>', 'Session timeout per agent in ms (overrides config)')
     .option('--max-acceptance-retries <n>', 'Max re-runs on acceptance failure (default: 2)', '2')
     .option('--stream', 'Stream agent output as it arrives')
     .action(async (planFile: string, opts: {
       phase?: string;
       force: boolean;
+      model?: string;
       timeout?: string;
       maxAcceptanceRetries: string;
       stream: boolean;
@@ -132,6 +135,7 @@ export function registerExec(program: Command): void {
       }
 
       const config = loadConfig();
+      const model = opts.model ?? config.defaultModel;
       const timeoutMs = opts.timeout ? parseInt(opts.timeout, 10) : config.defaultTimeoutMs;
       const globalMaxRetries = parseInt(opts.maxAcceptanceRetries, 10);
       const phaseResults = new Map<string, string>();
@@ -187,7 +191,7 @@ export function registerExec(program: Command): void {
               agentType,
               prompt,
               dependsOn: i > 0 ? [`${phase.id}-task-${i}`] : undefined,
-              sessionOptions: { timeoutMs },
+              sessionOptions: { model, timeoutMs },
             }));
 
             const results = await runSwarm(tasks, topology, {
@@ -209,6 +213,7 @@ export function registerExec(program: Command): void {
             output.info(`Agent: ${agentBadge(agentType)}`);
 
             const result = await runAgentTask(agentType, prompt, {
+              model,
               timeoutMs,
               onChunk: opts.stream ? chunk => process.stdout.write(chunk) : undefined,
             });
@@ -226,7 +231,7 @@ export function registerExec(program: Command): void {
 
           if (opts.stream) output.blank();
           output.dim(`  Checking acceptance criteria (attempt ${attempt + 1}/${maxRetries + 1})…`);
-          const check = await runAcceptanceCheck(phase.acceptanceCriteria, phaseOutput, timeoutMs);
+          const check = await runAcceptanceCheck(phase.acceptanceCriteria, phaseOutput, timeoutMs, model);
 
           if (check.pass) {
             output.dim('  Acceptance: PASS');

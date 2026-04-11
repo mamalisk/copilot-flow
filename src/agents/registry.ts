@@ -7,7 +7,7 @@ import type { AgentDefinition, AgentType } from '../types.js';
 
 export const AGENT_REGISTRY: Record<AgentType, AgentDefinition> = {
   coder: {
-    model: 'gpt-4o',
+    model: '',
     description: 'Writes clean, efficient, production-ready code',
     systemMessage:
       'You are an expert software engineer. Write clean, efficient, production-ready code. ' +
@@ -17,7 +17,7 @@ export const AGENT_REGISTRY: Record<AgentType, AgentDefinition> = {
   },
 
   researcher: {
-    model: 'gpt-4o',
+    model: '',
     description: 'Investigates topics and gathers information thoroughly',
     systemMessage:
       'You are a thorough researcher. Investigate topics deeply, gather relevant information, ' +
@@ -26,7 +26,7 @@ export const AGENT_REGISTRY: Record<AgentType, AgentDefinition> = {
   },
 
   tester: {
-    model: 'gpt-4o',
+    model: '',
     description: 'Writes comprehensive tests and identifies edge cases',
     systemMessage:
       'You are a testing expert. Write comprehensive unit tests, integration tests, and ' +
@@ -35,7 +35,7 @@ export const AGENT_REGISTRY: Record<AgentType, AgentDefinition> = {
   },
 
   reviewer: {
-    model: 'gpt-4o',
+    model: '',
     description: 'Reviews code for quality, correctness, and security',
     systemMessage:
       'You are a senior code reviewer. Identify bugs, security vulnerabilities, performance ' +
@@ -44,7 +44,7 @@ export const AGENT_REGISTRY: Record<AgentType, AgentDefinition> = {
   },
 
   architect: {
-    model: 'gpt-4o',
+    model: '',
     description: 'Designs system architecture and makes high-level technical decisions',
     systemMessage:
       'You are a software architect. Design scalable, maintainable system architectures. ' +
@@ -54,7 +54,7 @@ export const AGENT_REGISTRY: Record<AgentType, AgentDefinition> = {
   },
 
   coordinator: {
-    model: 'gpt-4o',
+    model: '',
     description: 'Coordinates multi-agent workflows and decomposes complex tasks',
     systemMessage:
       'You are a multi-agent coordinator. Break down complex tasks into clear subtasks. ' +
@@ -63,7 +63,7 @@ export const AGENT_REGISTRY: Record<AgentType, AgentDefinition> = {
   },
 
   analyst: {
-    model: 'gpt-4o',
+    model: '',
     description: 'Analyses requirements, data, and systems',
     systemMessage:
       'You are a requirements and systems analyst. Analyse requirements, identify ambiguities, ' +
@@ -72,7 +72,7 @@ export const AGENT_REGISTRY: Record<AgentType, AgentDefinition> = {
   },
 
   debugger: {
-    model: 'gpt-4o',
+    model: '',
     description: 'Diagnoses and fixes bugs and runtime issues',
     systemMessage:
       'You are a debugging specialist. Methodically identify root causes of bugs and runtime ' +
@@ -81,7 +81,7 @@ export const AGENT_REGISTRY: Record<AgentType, AgentDefinition> = {
   },
 
   documenter: {
-    model: 'gpt-4o',
+    model: '',
     description: 'Writes clear technical documentation',
     systemMessage:
       'You are a technical writer. Write clear, concise, and accurate documentation including ' +
@@ -90,7 +90,7 @@ export const AGENT_REGISTRY: Record<AgentType, AgentDefinition> = {
   },
 
   optimizer: {
-    model: 'gpt-4o',
+    model: '',
     description: 'Optimises code for performance and efficiency',
     systemMessage:
       'You are a performance optimisation specialist. Profile and optimise code for speed, ' +
@@ -99,7 +99,7 @@ export const AGENT_REGISTRY: Record<AgentType, AgentDefinition> = {
   },
 
   'security-auditor': {
-    model: 'gpt-4o',
+    model: '',
     description: 'Audits code and systems for security vulnerabilities',
     systemMessage:
       'You are a security auditor. Identify OWASP Top 10 vulnerabilities, injection flaws, ' +
@@ -108,7 +108,7 @@ export const AGENT_REGISTRY: Record<AgentType, AgentDefinition> = {
   },
 
   'performance-engineer': {
-    model: 'gpt-4o',
+    model: '',
     description: 'Engineers systems for high performance and scalability',
     systemMessage:
       'You are a performance engineer. Design and implement high-performance systems. Conduct ' +

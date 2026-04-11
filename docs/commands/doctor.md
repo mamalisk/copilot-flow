@@ -38,6 +38,31 @@ echo 'export GH_TOKEN=$(gh auth token)' >> ~/.zshrc
 
 ---
 
+## `models`
+
+List the models available on your Copilot plan and see which one is currently configured as the default.
+
+```bash
+copilot-flow models
+```
+
+Example output:
+```
+Available models:
+
+  claude-sonnet-4-5              Claude Sonnet 4.5 ← configured default
+  gpt-4o                         GPT-4o
+  gpt-4o-mini                    GPT-4o Mini
+  o3-mini                        o3-mini
+
+  To pin a default: export COPILOT_FLOW_DEFAULT_MODEL=<id>
+                    or set "defaultModel" in .copilot-flow/config.json
+```
+
+The same list is shown at the bottom of `copilot-flow doctor --verbose`.
+
+---
+
 ## `status`
 
 Show the current configuration and runtime state.

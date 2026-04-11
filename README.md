@@ -279,6 +279,7 @@ copilot-flow agent spawn \
 | `plan` / `exec` | Phased multi-swarm pipelines | [→ docs/commands/plan-exec.md](docs/commands/plan-exec.md) |
 | `memory` | Persist context between runs | [→ docs/commands/memory.md](docs/commands/memory.md) |
 | `doctor` / `init` / `status` | Setup and diagnostics | [→ docs/commands/doctor.md](docs/commands/doctor.md) |
+| `models` | List models available on your Copilot plan | [→ docs/commands/doctor.md](docs/commands/doctor.md) |
 
 ---
 
