@@ -1,7 +1,7 @@
 # copilot-flow
 
 <p align="center">
-  <img src="./copilot-flow.png" alt="copilot-flow logo" width="480" />
+  <img src="https://github.com/mamalisk/copilot-flow/raw/main/copilot-flow.png" alt="copilot-flow logo" width="480" />
 </p>
 
 Multi-agent orchestration framework for **GitHub Copilot CLI** — inspired by [Ruflo (claude-flow)](https://github.com/ruvnet/claude-flow).
