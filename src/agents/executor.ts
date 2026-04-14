@@ -16,6 +16,15 @@ import type { RetryConfig } from '../core/retry.js';
 // Re-export RetryConfig from types for convenience
 export type { AgentType, AgentResult };
 
+/** Extract the most useful argument from a tool call for display (path, command, query, etc.). */
+function formatToolArgs(args?: Record<string, unknown>): string {
+  if (!args) return '';
+  const first = Object.entries(args).find(([, v]) => typeof v === 'string');
+  if (!first) return '';
+  const val = String(first[1]);
+  return ': ' + (val.length > 80 ? val.slice(0, 77) + '…' : val);
+}
+
 export interface RunTaskOptions {
   /** Override the model from the agent registry. */
   model?: string;
@@ -102,27 +111,64 @@ export async function runAgentTask(
         output.debug(`[${agentType}] Session started: ${sessionId}`);
 
         let collected = '';
+        // Once streaming response text starts, suppress further progress lines so
+        // they don't interleave with the response on stdout.
+        let responseStarted = false;
+        // Reasoning models (o1/o3) emit reasoning_delta before the response.
+        let reasoningShown = false;
+        // Map toolCallId → toolName so we can report which tool failed.
+        const toolCallNames = new Map<string, string>();
 
+        // ── Response streaming ───────────────────────────────────────────────
+        // Print a clear separator before the first chunk so progress logs and
+        // response text are visually separated.
         if (options.onChunk) {
           session.on('assistant.message_delta', (e: { data: { deltaContent: string } }) => {
+            if (!responseStarted) {
+              responseStarted = true;
+              output.blank();
+              output.dim(`  [${agentType}] ─── Response ──────────────────────────────`);
+            }
             const chunk = e.data.deltaContent ?? '';
             options.onChunk!(chunk);
             collected += chunk;
           });
         }
 
-        // Always show progress events so users can see what the agent is doing
+        // ── Progress events ──────────────────────────────────────────────────
+        // Reasoning (o1/o3 models) — show a single indicator, not the full content.
+        session.on('assistant.reasoning_delta', (_e: unknown) => {
+          if (!reasoningShown && !responseStarted) {
+            reasoningShown = true;
+            output.dim(`  [${agentType}] Thinking…`);
+          }
+        });
+
+        // Intent — what the agent plans to do next.
         session.on('assistant.intent', (e: { data: { intent: string } }) => {
-          output.dim(`  [${agentType}] ${e.data.intent}`);
+          if (!responseStarted) {
+            output.dim(`  [${agentType}] ${e.data.intent}`);
+          }
         });
-        session.on('assistant.turn_start', (e: { data: { turnId: string } }) => {
-          output.dim(`  [${agentType}] Turn ${e.data.turnId}`);
-        });
-        session.on('tool.execution_start', (e: { data: { toolName: string } }) => {
-          output.dim(`  [${agentType}] → ${e.data.toolName}`);
+
+        // Tool calls — show name plus the most informative argument.
+        session.on('tool.execution_start', (e: { data: { toolCallId: string; toolName: string; arguments?: Record<string, unknown> } }) => {
+          toolCallNames.set(e.data.toolCallId, e.data.toolName);
+          if (!responseStarted) {
+            output.dim(`  [${agentType}] → ${e.data.toolName}${formatToolArgs(e.data.arguments)}`);
+          }
         });
         session.on('tool.execution_progress', (e: { data: { progressMessage: string } }) => {
-          output.dim(`  [${agentType}]   ${e.data.progressMessage}`);
+          if (!responseStarted) {
+            output.dim(`  [${agentType}]   ${e.data.progressMessage}`);
+          }
+        });
+        // Report tool failures regardless of streaming state.
+        session.on('tool.execution_complete', (e: { data: { toolCallId: string; success: boolean } }) => {
+          if (!e.data.success) {
+            const name = toolCallNames.get(e.data.toolCallId) ?? 'tool';
+            output.warn(`[${agentType}] ✗ ${name} failed`);
+          }
         });
 
         output.debug(`[${agentType}] Sending prompt (${task.length} chars, timeout: ${timeoutMs}ms)`);
