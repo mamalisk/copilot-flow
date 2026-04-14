@@ -30,8 +30,16 @@
     "orchestration",
     "cli"
   ],
-  "author": "",
+  "author": "Kostas Mamalis",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mamalisk/copilot-flow.git"
+  },
+  "homepage": "https://github.com/mamalisk/copilot-flow#readme",
+  "bugs": {
+    "url": "https://github.com/mamalisk/copilot-flow/issues"
+  },
   "dependencies": {
     "@github/copilot-sdk": "latest",
     "chalk": "^5.3.0",
