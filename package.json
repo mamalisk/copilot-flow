@@ -1,6 +1,6 @@
 {
   "name": "copilot-flow",
-  "version": "2.4.1",
+  "version": "2.4.2",
   "description": "Multi-agent orchestration framework for GitHub Copilot CLI — inspired by Ruflo (claude-flow)",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
