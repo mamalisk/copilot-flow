@@ -28,7 +28,7 @@ function formatToolArgs(args?: Record<string, unknown>): string {
 export interface RunTaskOptions {
   /** Override the model from the agent registry. */
   model?: string;
-  /** Session timeout in ms. Default: 120_000 (2 minutes). */
+  /** Session timeout in ms. Default: 1_200_000 (20 minutes). */
   timeoutMs?: number;
   /** Retry configuration override. */
   retryConfig?: Partial<RetryConfig>;
@@ -60,7 +60,7 @@ export async function runAgentTask(
   // Use explicitly passed model, then agent registry default, then config default.
   // Empty string means "let the Copilot CLI choose" — omitted from createSession entirely.
   const model = options.model || def.model || '';
-  const timeoutMs = options.timeoutMs ?? 120_000;
+  const timeoutMs = options.timeoutMs ?? 1_200_000;
   const startTime = Date.now();
   let attempts = 0;
 

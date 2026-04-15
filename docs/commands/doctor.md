@@ -118,7 +118,7 @@ copilot-flow init --model gpt-4o --topology hierarchical --max-agents 6
 {
   "version": "1.0.0",
   "defaultModel": "",
-  "defaultTimeoutMs": 120000,
+  "defaultTimeoutMs": 1200000,
   "swarm": {
     "topology": "hierarchical",
     "maxAgents": 8

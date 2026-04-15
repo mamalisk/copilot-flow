@@ -81,7 +81,7 @@ export function registerSwarm(program: Command): void {
       (val, prev: string[]) => [...prev, val], [] as string[])
     .option('--agent <name>', 'Name of custom agent to activate for every session in this swarm')
     .option('--model <model>', 'Model override for all agents in this swarm')
-    .option('--timeout <ms>', 'Session timeout per agent in ms (default: from config, fallback 120000)')
+    .option('--timeout <ms>', 'Session timeout per agent in ms (default: from config, fallback 1200000)')
     .action(async (opts: {
       task?: string;
       spec?: string;

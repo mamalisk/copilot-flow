@@ -64,7 +64,7 @@ export function registerAgent(program: Command): void {
     .option('--output <file>', 'Write result to a markdown file')
     .option('--type <type>', 'Agent type (default: auto-routed from task)')
     .option('--model <model>', 'Override the default model')
-    .option('--timeout <ms>', 'Session timeout in ms', '120000')
+    .option('--timeout <ms>', 'Session timeout in ms', '1200000')
     .option('--max-retries <n>', 'Maximum retry attempts', '3')
     .option('--retry-delay <ms>', 'Initial retry delay in ms', '1000')
     .option('--retry-strategy <strategy>', 'Backoff strategy (exponential|linear|constant|fibonacci)', 'exponential')
@@ -136,7 +136,7 @@ export function registerAgent(program: Command): void {
 
       const runTask = () => runAgentTask(agentType, task, {
         model: opts.model ?? config.agents.models?.[agentType] ?? config.defaultModel,
-        timeoutMs: opts.timeout !== '120000' ? parseInt(opts.timeout, 10) : config.defaultTimeoutMs,
+        timeoutMs: opts.timeout !== '1200000' ? parseInt(opts.timeout, 10) : config.defaultTimeoutMs,
         retryConfig: opts.retry === false
           ? { maxAttempts: 1 }
           : {

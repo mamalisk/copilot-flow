@@ -56,6 +56,9 @@ copilot-flow plan prd.md -f .copilot-flow/plans/my-project/phases.yaml
 
 ### `phases.yaml` format
 
+The example below has a parallel wave: `backend` and `frontend` both depend on `design`
+but not on each other, so they run concurrently in the same wave.
+
 ```yaml
 version: "1"
 spec: prd.md
@@ -64,31 +67,38 @@ phases:
     description: Investigate the domain, competitors, and technical constraints.
     type: agent
     agentType: researcher
-    dependsOn: []
+    # no dependsOn — runs first
 
-  - id: epics
-    description: Break the PRD into epics and high-level user stories.
+  - id: design
+    description: Produce system design and API contracts.
     type: agent
-    agentType: analyst
-    acceptanceCriteria: >
-      Must produce at least 3 epics, each with a goal statement and
-      at least 2 user stories in As a / I want / So that format.
+    agentType: architect
     dependsOn: [research]
 
-  - id: implement
-    description: Implement the core features from the epics.
+  - id: backend
+    description: Implement backend services from the design.
     type: swarm
     topology: hierarchical
-    agents: [coder, coder, tester]
-    model: gpt-4o-mini    # optional: use a cheaper model for bulk code generation
-    dependsOn: [epics]
+    agents: [coder, tester]
+    model: gpt-4o-mini    # optional: cheaper model for bulk code generation
+    dependsOn: [design]
+
+  - id: frontend
+    description: Implement the frontend from the design.
+    type: agent
+    agentType: coder
+    dependsOn: [design]   # depends on design, NOT on backend → runs in parallel with backend
 
   - id: review
-    description: Review the implementation for correctness and quality.
+    description: Review the full implementation for correctness and quality.
     type: agent
     agentType: reviewer
-    model: o1             # optional: use a stronger model for validation
-    dependsOn: [implement]
+    model: o1             # optional: stronger model for validation
+    dependsOn: [backend, frontend]
+    acceptanceCriteria: >
+      The backend and frontend must be consistent with the API contracts
+      defined in the design phase.
+    maxAcceptanceRetries: 2
 ```
 
 ### Phase fields
@@ -124,6 +134,31 @@ Each phase's prompt automatically includes:
 2. The **output of every dependency phase** (read from disk)
 
 So context accumulates through the pipeline without manual copy-paste.
+
+### Parallel execution
+
+When multiple phases share a common dependency but not each other, copilot-flow runs
+them in the same "wave" using `Promise.all()` — the same model used inside the
+`hierarchical` swarm topology.
+
+```
+Phase: research
+Phase: design
+Parallel phases: backend + frontend   ← both depend on design, not on each other
+  Running 2 phases concurrently
+Phase: review
+```
+
+With `--stream` and parallel phases, each chunk is prefixed with `[phase-id]` so
+outputs from concurrent phases remain distinguishable in the terminal:
+
+```
+[backend] Implementing the user service…
+[frontend] Creating the login component…
+[backend] Adding authentication middleware…
+```
+
+To force two phases to run serially, add an explicit `dependsOn` between them in the YAML.
 
 ### Options
 

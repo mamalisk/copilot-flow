@@ -62,7 +62,7 @@ export interface AgentResult {
 export interface SessionExtensions {
   /** Model override — takes precedence over the agent registry and config default. */
   model?: string;
-  /** Session timeout in ms. Overrides the executor default (120 000). */
+  /** Session timeout in ms. Overrides the executor default (1 200 000). */
   timeoutMs?: number;
   /** Content of a repo instructions file, injected into the custom_instructions section. */
   instructionsContent?: string;
@@ -145,7 +145,7 @@ export interface CopilotFlowConfig {
   version: string;
   /** Default model passed to createSession(). Default: 'gpt-4o' */
   defaultModel: string;
-  /** Default session timeout in ms. Default: 120000 (2 min). CLI --timeout overrides per-run. */
+  /** Default session timeout in ms. Default: 1200000 (20 min). CLI --timeout overrides per-run. */
   defaultTimeoutMs: number;
   swarm: {
     topology: SwarmTopology;

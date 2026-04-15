@@ -64,7 +64,7 @@ function topoSort(phases: PlanPhase[]): PlanPhase[] {
 function buildPhasePrompt(
   phase: PlanPhase,
   plan: Plan,
-  phaseResults: Map<string, string>,
+  phaseResults: ReadonlyMap<string, string>,
   planDir: string,
 ): string {
   const sections: string[] = [];
@@ -119,6 +119,123 @@ async function runAcceptanceCheck(
   return { pass, reason };
 }
 
+/**
+ * Execute a single phase (agent or swarm), including the acceptance-criteria
+ * retry loop. Throws on failure so `Promise.all` can reject the whole wave.
+ *
+ * @param parallelCount  Number of phases in the current wave. When > 1 and
+ *                       stream is enabled, chunk output is prefixed with
+ *                       `[phase.id] ` so parallel streams are distinguishable.
+ */
+async function runPhase(
+  phase: PlanPhase,
+  plan: Plan,
+  phaseResults: ReadonlyMap<string, string>,
+  planDir: string,
+  opts: { force: boolean; stream: boolean; maxAcceptanceRetries: string },
+  config: CopilotFlowConfig,
+  cliModel: string,
+  timeoutMs: number,
+  globalMaxRetries: number,
+  parallelCount: number,
+): Promise<{ id: string; output: string; outFile: string; skipped: boolean }> {
+  const outFile = phaseOutputFile(phase, planDir);
+
+  // Skip already-complete phases unless --force
+  if (!opts.force && existsSync(outFile)) {
+    const existing = readFileSync(outFile, 'utf-8').trim();
+    output.dim(`  [${phase.id}] Already complete — skipping (${outFile}). Use --force to re-run.`);
+    return { id: phase.id, output: existing, outFile, skipped: true };
+  }
+
+  const streamPrefix = parallelCount > 1 && opts.stream ? `[${phase.id}] ` : '';
+
+  const maxRetries = phase.maxAcceptanceRetries ?? globalMaxRetries;
+  let attempt = 0;
+  let phaseOutput = '';
+
+  while (attempt <= maxRetries) {
+    const prompt = buildPhasePrompt(phase, plan, phaseResults, planDir);
+
+    // ── Run the phase (agent or swarm) ──────────────────────────────────────
+    if (phase.type === 'swarm') {
+      const topology = phase.topology ?? 'hierarchical';
+      const agentTypes = phase.agents ?? ['researcher', 'coder', 'reviewer'];
+
+      output.info(`[${phase.id}] Swarm (${topology}): ${agentTypes.map(a => agentBadge(a)).join(' → ')}`);
+
+      const tasks: SwarmTask[] = agentTypes.map((agentType, i) => ({
+        id: `${phase.id}-task-${i + 1}`,
+        agentType,
+        prompt,
+        dependsOn: i > 0 ? [`${phase.id}-task-${i}`] : undefined,
+        sessionOptions: { model: resolveModel(agentType, phase, cliModel, config), timeoutMs },
+      }));
+
+      const results = await runSwarm(tasks, topology, {
+        onProgress: opts.stream
+          ? (_taskId, agentType, chunk) =>
+              process.stdout.write(`${streamPrefix}${agentBadge(agentType)} ${chunk}`)
+          : undefined,
+      });
+
+      const last = results.get(tasks[tasks.length - 1].id);
+      if (!last?.success) {
+        throw new Error(`Phase "${phase.id}" failed: ${last?.error ?? 'unknown error'}`);
+      }
+      phaseOutput = last.output;
+
+    } else {
+      const agentType = phase.agentType ?? 'analyst';
+      output.info(`[${phase.id}] Agent: ${agentBadge(agentType)}`);
+
+      const result = await runAgentTask(agentType, prompt, {
+        model: resolveModel(agentType, phase, cliModel, config),
+        timeoutMs,
+        onChunk: opts.stream
+          ? chunk => process.stdout.write(`${streamPrefix}${chunk}`)
+          : undefined,
+      });
+
+      if (!result.success) {
+        throw new Error(`Phase "${phase.id}" failed: ${result.error}`);
+      }
+      phaseOutput = result.output;
+    }
+
+    // ── Acceptance check (if criteria defined) ──────────────────────────────
+    if (!phase.acceptanceCriteria) break;
+
+    if (opts.stream) output.blank();
+    output.dim(`  [${phase.id}] Checking acceptance criteria (attempt ${attempt + 1}/${maxRetries + 1})…`);
+    const check = await runAcceptanceCheck(
+      phase.acceptanceCriteria,
+      phaseOutput,
+      timeoutMs,
+      resolveModel('reviewer', phase, cliModel, config),
+    );
+
+    if (check.pass) {
+      output.dim(`  [${phase.id}] Acceptance: PASS`);
+      break;
+    }
+
+    attempt++;
+    if (attempt > maxRetries) {
+      throw new Error(
+        `Phase "${phase.id}" failed acceptance after ${maxRetries + 1} attempt(s).` +
+        (check.reason ? ` Reason: ${check.reason}` : ''),
+      );
+    }
+
+    output.warn(`  [${phase.id}] Acceptance: FAIL — ${check.reason}`);
+    output.info(`  [${phase.id}] Retrying (attempt ${attempt + 1}/${maxRetries + 1})…`);
+  }
+
+  writeFileSync(outFile, `# Phase: ${phase.id}\n\n${phaseOutput}\n`, 'utf-8');
+  return { id: phase.id, output: phaseOutput, outFile, skipped: false };
+}
+
 // ─── Command ──────────────────────────────────────────────────────────────────
 
 export function registerExec(program: Command): void {
@@ -156,7 +273,7 @@ export function registerExec(program: Command): void {
       }
 
       const config = loadConfig();
-      const model = opts.model ?? config.defaultModel;
+      const cliModel = opts.model ?? '';
       const timeoutMs = opts.timeout ? parseInt(opts.timeout, 10) : config.defaultTimeoutMs;
       const globalMaxRetries = parseInt(opts.maxAcceptanceRetries, 10);
       const phaseResults = new Map<string, string>();
@@ -165,126 +282,97 @@ export function registerExec(program: Command): void {
       const planDir = path.dirname(path.resolve(planFile));
       mkdirSync(planDir, { recursive: true });
 
-      // Determine which phases to run
-      let phasesToRun: PlanPhase[];
+      // ── Single-phase path ────────────────────────────────────────────────
       if (opts.phase) {
         const target = plan.phases.find(p => p.id === opts.phase);
         if (!target) {
           output.error(`Phase not found: "${opts.phase}". Available: ${plan.phases.map(p => p.id).join(', ')}`);
           process.exit(1);
         }
-        phasesToRun = [target];
-      } else {
-        phasesToRun = topoSort(plan.phases);
+
+        output.header(`Executing plan: ${planFile}`);
+        output.header(`Phase: ${target.id}`);
+        output.dim(target.description);
+
+        try {
+          const r = await runPhase(
+            target, plan, phaseResults, planDir,
+            opts, config, cliModel, timeoutMs, globalMaxRetries, 1,
+          );
+          if (!r.skipped) {
+            if (opts.stream) output.blank();
+            output.success(`Phase "${r.id}" complete → ${r.outFile}`);
+          }
+        } catch (err) {
+          output.error(err instanceof Error ? err.message : String(err));
+          await clientManager.shutdown();
+          process.exit(1);
+        }
+
+        await clientManager.shutdown();
+        process.exit(0);
       }
 
+      // ── Wave-based parallel path ─────────────────────────────────────────
+      const allPhases = topoSort(plan.phases);
+      const completed = new Set<string>();
+      const remaining = new Set(allPhases.map(p => p.id));
+
       output.header(`Executing plan: ${planFile}`);
-      output.dim(`Phases: ${phasesToRun.map(p => p.id).join(' → ')}`);
+      output.dim(`Phases: ${allPhases.map(p => p.id).join(' → ')}`);
       output.blank();
 
-      for (const phase of phasesToRun) {
-        const outFile = phaseOutputFile(phase, planDir);
+      while (remaining.size > 0) {
+        // Collect all phases whose dependencies are satisfied
+        const wave = allPhases.filter(p =>
+          remaining.has(p.id) &&
+          (p.dependsOn ?? []).every(dep => completed.has(dep)),
+        );
 
-        output.header(`Phase: ${phase.id}`);
-        output.dim(phase.description);
-
-        // Skip already-complete phases unless --force
-        if (!opts.force && existsSync(outFile)) {
-          const existing = readFileSync(outFile, 'utf-8').trim();
-          phaseResults.set(phase.id, existing);
-          output.dim(`  Already complete — skipping (${outFile}). Use --force to re-run.`);
-          output.blank();
-          continue;
+        if (wave.length === 0) {
+          output.error('Deadlock detected — dependency cycle or unresolvable dependsOn in plan');
+          await clientManager.shutdown();
+          process.exit(1);
         }
 
-        const maxRetries = phase.maxAcceptanceRetries ?? globalMaxRetries;
-        let attempt = 0;
-        let phaseOutput = '';
+        if (wave.length === 1) {
+          output.header(`Phase: ${wave[0].id}`);
+          output.dim(wave[0].description);
+        } else {
+          output.header(`Parallel phases: ${wave.map(p => p.id).join(' + ')}`);
+          output.dim(`  Running ${wave.length} phases concurrently`);
+        }
 
-        while (attempt <= maxRetries) {
-          const prompt = buildPhasePrompt(phase, plan, phaseResults, planDir);
+        // phaseResults is ReadonlyMap during the wave; all phases in this wave
+        // read from completed results only — no writes until after the wave.
+        const readonlyResults: ReadonlyMap<string, string> = phaseResults;
 
-          // ── Run the phase (agent or swarm) ──────────────────────────────
-          if (phase.type === 'swarm') {
-            const topology = phase.topology ?? 'hierarchical';
-            const agentTypes = phase.agents ?? ['researcher', 'coder', 'reviewer'];
-
-            output.info(`Swarm (${topology}): ${agentTypes.map(a => agentBadge(a)).join(' → ')}`);
-
-            const tasks: SwarmTask[] = agentTypes.map((agentType, i) => ({
-              id: `${phase.id}-task-${i + 1}`,
-              agentType,
-              prompt,
-              dependsOn: i > 0 ? [`${phase.id}-task-${i}`] : undefined,
-              sessionOptions: { model: resolveModel(agentType, phase, model, config), timeoutMs },
-            }));
-
-            const results = await runSwarm(tasks, topology, {
-              onProgress: opts.stream
-                ? (_taskId, agentType, chunk) => process.stdout.write(`${agentBadge(agentType)} ${chunk}`)
-                : undefined,
-            });
-
-            const last = results.get(tasks[tasks.length - 1].id);
-            if (!last?.success) {
-              output.error(`Phase "${phase.id}" failed: ${last?.error ?? 'unknown error'}`);
-              await clientManager.shutdown();
-              process.exit(1);
-            }
-            phaseOutput = last.output;
-
-          } else {
-            const agentType = phase.agentType ?? 'analyst';
-            output.info(`Agent: ${agentBadge(agentType)}`);
-
-            const result = await runAgentTask(agentType, prompt, {
-              model: resolveModel(agentType, phase, model, config),
-              timeoutMs,
-              onChunk: opts.stream ? chunk => process.stdout.write(chunk) : undefined,
-            });
-
-            if (!result.success) {
-              output.error(`Phase "${phase.id}" failed: ${result.error}`);
-              await clientManager.shutdown();
-              process.exit(1);
-            }
-            phaseOutput = result.output;
-          }
-
-          // ── Acceptance check (if criteria defined) ──────────────────────
-          if (!phase.acceptanceCriteria) break;
-
-          if (opts.stream) output.blank();
-          output.dim(`  Checking acceptance criteria (attempt ${attempt + 1}/${maxRetries + 1})…`);
-          const check = await runAcceptanceCheck(
-            phase.acceptanceCriteria,
-            phaseOutput,
-            timeoutMs,
-            resolveModel('reviewer', phase, model, config),
+        let waveResults: Array<{ id: string; output: string; outFile: string; skipped: boolean }>;
+        try {
+          waveResults = await Promise.all(
+            wave.map(phase =>
+              runPhase(
+                phase, plan, readonlyResults, planDir,
+                opts, config, cliModel, timeoutMs, globalMaxRetries, wave.length,
+              ),
+            ),
           );
-
-          if (check.pass) {
-            output.dim('  Acceptance: PASS');
-            break;
-          }
-
-          attempt++;
-          if (attempt > maxRetries) {
-            output.error(`Phase "${phase.id}" failed acceptance after ${maxRetries + 1} attempt(s).`);
-            if (check.reason) output.dim(`  Reason: ${check.reason}`);
-            await clientManager.shutdown();
-            process.exit(1);
-          }
-
-          output.warn(`  Acceptance: FAIL — ${check.reason}`);
-          output.info(`  Retrying phase (attempt ${attempt + 1}/${maxRetries + 1})…`);
+        } catch (err) {
+          output.error(err instanceof Error ? err.message : String(err));
+          await clientManager.shutdown();
+          process.exit(1);
         }
 
-        writeFileSync(outFile, `# Phase: ${phase.id}\n\n${phaseOutput}\n`, 'utf-8');
-        phaseResults.set(phase.id, phaseOutput);
+        for (const r of waveResults) {
+          phaseResults.set(r.id, r.output);
+          completed.add(r.id);
+          remaining.delete(r.id);
+          if (!r.skipped) {
+            if (opts.stream) output.blank();
+            output.success(`Phase "${r.id}" complete → ${r.outFile}`);
+          }
+        }
 
-        if (opts.stream) output.blank();
-        output.success(`Phase "${phase.id}" complete → ${outFile}`);
         output.blank();
       }
 

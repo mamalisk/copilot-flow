@@ -14,7 +14,7 @@ const CONFIG_VERSION = '1.0.0';
 export const DEFAULT_CONFIG: CopilotFlowConfig = {
   version: CONFIG_VERSION,
   defaultModel: process.env.COPILOT_FLOW_DEFAULT_MODEL ?? '',
-  defaultTimeoutMs: parseInt(process.env.COPILOT_FLOW_TIMEOUT_MS ?? '120000', 10),
+  defaultTimeoutMs: parseInt(process.env.COPILOT_FLOW_TIMEOUT_MS ?? '1200000', 10),
   swarm: {
     topology: 'hierarchical',
     maxAgents: 8,
