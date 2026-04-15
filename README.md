@@ -280,6 +280,7 @@ copilot-flow agent spawn \
 | `memory` | Persist context between runs | [→ docs/commands/memory.md](docs/commands/memory.md) |
 | `doctor` / `init` / `status` | Setup and diagnostics | [→ docs/commands/doctor.md](docs/commands/doctor.md) |
 | `models` | List models available on your Copilot plan | [→ docs/commands/doctor.md](docs/commands/doctor.md) |
+| `hooks` | List and configure hooks | [→ docs/commands/hooks.md](docs/commands/hooks.md) |
 
 ---
 
