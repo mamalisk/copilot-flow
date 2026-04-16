@@ -15,6 +15,7 @@
 import { existsSync, readFileSync } from 'fs';
 import { runAgentTask } from '../agents/executor.js';
 import { getMemoryStore } from './store.js';
+import { output as log } from '../output.js';
 
 const DISTILL_PROMPT_FILE = '.github/memory-prompt.md';
 
@@ -51,6 +52,25 @@ interface DistilledFact {
 }
 
 /**
+ * Find the outermost JSON array in a string using bracket counting.
+ * A non-greedy regex like /\[[\s\S]*?\]/ would match the first *inner*
+ * array (e.g. a tags array ["code"]) rather than the outer facts array.
+ */
+function extractOutermostArray(text: string): string | null {
+  const start = text.indexOf('[');
+  if (start === -1) return null;
+  let depth = 0;
+  for (let i = start; i < text.length; i++) {
+    if (text[i] === '[') depth++;
+    else if (text[i] === ']') {
+      depth--;
+      if (depth === 0) return text.slice(start, i + 1);
+    }
+  }
+  return null;
+}
+
+/**
  * Extract key facts from `output` and store them under `namespace`.
  *
  * @param output      The full text output from an agent/phase.
@@ -71,11 +91,13 @@ export async function distillToMemory(
     const result = await runAgentTask('analyst', prompt, { model });
     if (!result.success) return;
 
-    // Extract the first JSON array from the response
-    const match = result.output.match(/\[[\s\S]*?\]/);
-    if (!match) return;
+    // Extract the outermost JSON array from the response.
+    // Bracket-counting avoids the bug where a non-greedy regex would match
+    // an inner tag array (e.g. ["code"]) before the outer facts array.
+    const raw = extractOutermostArray(result.output);
+    if (!raw) return;
 
-    const facts = JSON.parse(match[0]) as DistilledFact[];
+    const facts = JSON.parse(raw) as DistilledFact[];
     if (!Array.isArray(facts)) return;
 
     const store = getMemoryStore();
@@ -88,7 +110,8 @@ export async function distillToMemory(
         { ttlMs, tags: Array.isArray(fact.tags) ? fact.tags : [] },
       );
     }
-  } catch {
+  } catch (err) {
     // Best-effort: distillation failures must never interrupt the main pipeline
+    log.dim(`  Memory distillation failed (${namespace}): ${(err as Error).message ?? err}`);
   }
 }

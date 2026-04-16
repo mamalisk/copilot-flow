@@ -1,6 +1,28 @@
 import { Command } from 'commander';
+import { mkdirSync, existsSync, writeFileSync } from 'fs';
 import { getMemoryStore } from '../memory/store.js';
 import { output, printTable } from '../output.js';
+
+const MEMORY_PROMPT_FILE = '.github/memory-prompt.md';
+
+const DEFAULT_MEMORY_PROMPT = `\
+You are a memory extractor for an AI agent pipeline. Given an agent's output, identify \
+up to 10 key facts, decisions, or constraints worth retaining for future work on this project.
+
+Rules:
+- Each fact must be self-contained (no pronouns or references to "the above" or "this output")
+- Values must be 1–2 sentences maximum
+- Use tags from this set: decision | constraint | requirement | architecture | code | api | config
+- Output ONLY a JSON array — no surrounding text, no markdown fences
+
+Example output:
+[
+  {"key":"auth-strategy","value":"JWT with 15-min expiry, no refresh tokens","tags":["decision","architecture"]},
+  {"key":"database","value":"PostgreSQL 16, repository pattern, no ORM","tags":["architecture","constraint"]}
+]
+
+Output to distil:
+`;
 
 export function registerMemory(program: Command): void {
   const memory = program.command('memory').description('Manage the namespaced memory store');
@@ -112,5 +134,21 @@ export function registerMemory(program: Command): void {
       const store = getMemoryStore();
       const count = store.clear(opts.namespace);
       output.success(`Cleared ${count} entries from: ${opts.namespace}`);
+    });
+
+  // ── memory prime ───────────────────────────────────────────────────────────
+  memory
+    .command('prime')
+    .description('Create .github/memory-prompt.md with the default distillation prompt')
+    .option('--force', 'Overwrite if the file already exists')
+    .action((opts: { force?: boolean }) => {
+      if (existsSync(MEMORY_PROMPT_FILE) && !opts.force) {
+        output.warn(`${MEMORY_PROMPT_FILE} already exists. Use --force to overwrite.`);
+        return;
+      }
+      mkdirSync('.github', { recursive: true });
+      writeFileSync(MEMORY_PROMPT_FILE, DEFAULT_MEMORY_PROMPT, 'utf-8');
+      output.success(`Created ${MEMORY_PROMPT_FILE}`);
+      output.dim('  Edit this file to customise what facts are extracted from agent outputs.');
     });
 }
