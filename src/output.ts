@@ -105,6 +105,48 @@ export async function withSpinner<T>(
   }
 }
 
+// ─── Agent name generator ─────────────────────────────────────────────────────
+
+const ADJECTIVES = [
+  'agile', 'apt', 'bold', 'brave', 'bright', 'brisk', 'calm', 'crisp',
+  'deft', 'deep', 'eager', 'fierce', 'fleet', 'keen', 'lean', 'lucid',
+  'nimble', 'pure', 'quick', 'sharp', 'stoic', 'sure', 'swift', 'true',
+  'vivid', 'wise', 'wry', 'zeal',
+];
+
+/**
+ * Famous people themed per agent type — used as the noun half of generated names.
+ * Each list is long enough to avoid collisions in most parallel runs.
+ */
+const TYPE_NAMES: Record<string, string[]> = {
+  coder:                ['Ada', 'Turing', 'Knuth', 'Hopper', 'Linus', 'Ritchie', 'Dijkstra', 'Lovelace', 'Wozniak', 'Stroustrup'],
+  researcher:           ['Darwin', 'Curie', 'Feynman', 'Sagan', 'Hawking', 'Bohr', 'Faraday', 'Pasteur', 'Franklin', 'Hubble'],
+  tester:               ['Deming', 'Juran', 'Crosby', 'Ishikawa', 'Shewhart', 'Taguchi', 'Myers', 'Bach', 'Kaner', 'Whittaker'],
+  reviewer:             ['Socrates', 'Kant', 'Voltaire', 'Russell', 'Popper', 'Aristotle', 'Hume', 'Locke', 'Peirce', 'Dewey'],
+  architect:            ['Wright', 'Gaudi', 'Hadid', 'Gehry', 'Piano', 'Foster', 'Kahn', 'Saarinen', 'Utzon', 'Niemeyer'],
+  analyst:              ['Euler', 'Gauss', 'Bayes', 'Laplace', 'Fourier', 'Markov', 'Poisson', 'Pascal', 'Leibniz', 'Ramanujan'],
+  documenter:           ['Orwell', 'Asimov', 'Tolkien', 'Twain', 'Hemingway', 'Feynman', 'Sagan', 'Knuth', 'Tufte', 'Strunk'],
+  debugger:             ['Holmes', 'Poirot', 'Marple', 'Morse', 'Columbo', 'Spade', 'Marlowe', 'Vance', 'Wolfe', 'Wimsey'],
+  coordinator:          ['Nelson', 'Marshall', 'Eisenhower', 'Wellington', 'Nimitz', 'Slim', 'Macarthur', 'Patton', 'Montgomery', 'Bradley'],
+  optimizer:            ['Ohno', 'Toyota', 'Goldratt', 'Taylor', 'Shannon', 'Neumann', 'Watt', 'Babbage', 'Ford', 'Deming'],
+  'security-auditor':   ['Shannon', 'Diffie', 'Hellman', 'Rivest', 'Shamir', 'Adleman', 'Schneier', 'Zimmermann', 'Bernstein', 'Mitnick'],
+  'performance-engineer': ['Carnot', 'Rankine', 'Kelvin', 'Watt', 'Newton', 'Lorentz', 'Mach', 'Tesla', 'Joule', 'Faraday'],
+};
+
+const FALLBACK_NAMES = ['Sage', 'Pixel', 'Cipher', 'Atlas', 'Echo', 'Nova', 'Orbit', 'Prism', 'Helix', 'Quark'];
+
+/**
+ * Generate a memorable, unique-ish name for an agent instance.
+ * Format: `{adjective}-{Name}` themed to the agent's role.
+ * Examples: `swift-Ada`, `keen-Darwin`, `bold-Holmes`, `eager-Euler`.
+ */
+export function generateAgentName(agentType: string): string {
+  const adj  = ADJECTIVES[Math.floor(Math.random() * ADJECTIVES.length)];
+  const pool = TYPE_NAMES[agentType] ?? FALLBACK_NAMES;
+  const name = pool[Math.floor(Math.random() * pool.length)];
+  return `${adj}-${name}`;
+}
+
 // ─── Agent status badge ───────────────────────────────────────────────────────
 
 export function agentBadge(type: string): string {

@@ -4,7 +4,7 @@ import { Command } from 'commander';
 import yaml from 'js-yaml';
 import { runAgentTask } from '../agents/executor.js';
 import { runSwarm } from '../swarm/coordinator.js';
-import { output, agentBadge } from '../output.js';
+import { output, agentBadge, generateAgentName } from '../output.js';
 import { loadConfig } from '../config.js';
 import { clientManager } from '../core/client-manager.js';
 import type { Plan, PlanPhase, SwarmTask, AgentType, CopilotFlowConfig } from '../types.js';
@@ -108,7 +108,7 @@ async function runAcceptanceCheck(
     `Acceptance criteria:\n${criteria}\n\n` +
     `Output to evaluate:\n${phaseOutput}`;
 
-  const result = await runAgentTask('reviewer', prompt, { timeoutMs, model });
+  const result = await runAgentTask('reviewer', prompt, { timeoutMs, model, label: generateAgentName('reviewer') });
   if (!result.success) {
     return { pass: false, reason: result.error ?? 'Reviewer agent failed' };
   }
@@ -167,6 +167,7 @@ async function runPhase(
       const tasks: SwarmTask[] = agentTypes.map((agentType, i) => ({
         id: `${phase.id}-task-${i + 1}`,
         agentType,
+        label: `${phase.id} — step ${i + 1}: ${agentType}`,
         prompt,
         dependsOn: i > 0 ? [`${phase.id}-task-${i}`] : undefined,
         sessionOptions: { model: resolveModel(agentType, phase, cliModel, config), timeoutMs },
@@ -192,6 +193,7 @@ async function runPhase(
       const result = await runAgentTask(agentType, prompt, {
         model: resolveModel(agentType, phase, cliModel, config),
         timeoutMs,
+        label: generateAgentName(agentType),
         onChunk: opts.stream
           ? chunk => process.stdout.write(`${streamPrefix}${chunk}`)
           : undefined,

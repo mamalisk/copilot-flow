@@ -84,6 +84,11 @@ export interface SwarmTask {
   id: string;
   agentType: AgentType;
   prompt: string;
+  /**
+   * Short human-readable description shown in progress output.
+   * If omitted the first line of the prompt (truncated to 60 chars) is used.
+   */
+  label?: string;
   /** IDs of tasks that must complete before this one. */
   dependsOn?: string[];
   retryConfig?: Partial<RetryConfig>;

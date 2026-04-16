@@ -44,6 +44,12 @@ export interface RunTaskOptions {
   customAgents?: CustomAgentConfig[];
   /** Name of the custom agent to activate for this session. */
   agentName?: string;
+  /**
+   * Short label used in all progress output (e.g. "coder/task-2").
+   * Defaults to agentType. Set by the swarm coordinator and exec runner
+   * so parallel agents of the same type are distinguishable in logs.
+   */
+  label?: string;
 }
 
 /**
@@ -64,9 +70,14 @@ export async function runAgentTask(
   const startTime = Date.now();
   let attempts = 0;
 
+  // Label used in all progress output. Callers (coordinator, exec) pass a unique
+  // label such as "coder/task-2" or "analyst/design" so parallel agents are
+  // distinguishable. Defaults to the bare agent type for single-agent runs.
+  const displayLabel = options.label ?? agentType;
+
   const onRetry = (err: Error, attempt: number, nextDelay: number) => {
     output.warn(
-      `[${agentType}] Retry ${attempt} in ${nextDelay}ms — ${err.message.slice(0, 80)}`
+      `[${displayLabel}] Retry ${attempt} in ${nextDelay}ms — ${err.message.slice(0, 80)}`
     );
   };
 
@@ -77,7 +88,7 @@ export async function runAgentTask(
       async () => {
         attempts++;
         const client = await clientManager.getClient();
-        output.debug(`[${agentType}] Creating session (model: ${model || 'default'}, attempt: ${attempts})`);
+        output.debug(`[${displayLabel}] Creating session (model: ${model || 'default'}, attempt: ${attempts})`);
 
         const session = await client.createSession({
           ...(model && { model }),
@@ -108,7 +119,7 @@ export async function runAgentTask(
         });
 
         sessionId = session.sessionId;
-        output.debug(`[${agentType}] Session started: ${sessionId}`);
+        output.debug(`[${displayLabel}] Session started: ${sessionId}`);
 
         let collected = '';
         // Once streaming response text starts, suppress further progress lines so
@@ -127,7 +138,7 @@ export async function runAgentTask(
             if (!responseStarted) {
               responseStarted = true;
               output.blank();
-              output.dim(`  [${agentType}] ─── Response ──────────────────────────────`);
+              output.dim(`  [${displayLabel}] ─── Response ──────────────────────────────`);
             }
             const chunk = e.data.deltaContent ?? '';
             options.onChunk!(chunk);
@@ -140,14 +151,14 @@ export async function runAgentTask(
         session.on('assistant.reasoning_delta', (_e: unknown) => {
           if (!reasoningShown && !responseStarted) {
             reasoningShown = true;
-            output.dim(`  [${agentType}] Thinking…`);
+            output.dim(`  [${displayLabel}] Thinking…`);
           }
         });
 
         // Intent — what the agent plans to do next.
         session.on('assistant.intent', (e: { data: { intent: string } }) => {
           if (!responseStarted) {
-            output.dim(`  [${agentType}] ${e.data.intent}`);
+            output.dim(`  [${displayLabel}] ${e.data.intent}`);
           }
         });
 
@@ -155,23 +166,23 @@ export async function runAgentTask(
         session.on('tool.execution_start', (e: { data: { toolCallId: string; toolName: string; arguments?: Record<string, unknown> } }) => {
           toolCallNames.set(e.data.toolCallId, e.data.toolName);
           if (!responseStarted) {
-            output.dim(`  [${agentType}] → ${e.data.toolName}${formatToolArgs(e.data.arguments)}`);
+            output.dim(`  [${displayLabel}] → ${e.data.toolName}${formatToolArgs(e.data.arguments)}`);
           }
         });
         session.on('tool.execution_progress', (e: { data: { progressMessage: string } }) => {
           if (!responseStarted) {
-            output.dim(`  [${agentType}]   ${e.data.progressMessage}`);
+            output.dim(`  [${displayLabel}]   ${e.data.progressMessage}`);
           }
         });
         // Report tool failures regardless of streaming state.
         session.on('tool.execution_complete', (e: { data: { toolCallId: string; success: boolean } }) => {
           if (!e.data.success) {
             const name = toolCallNames.get(e.data.toolCallId) ?? 'tool';
-            output.warn(`[${agentType}] ✗ ${name} failed`);
+            output.warn(`[${displayLabel}] ✗ ${name} failed`);
           }
         });
 
-        output.debug(`[${agentType}] Sending prompt (${task.length} chars, timeout: ${timeoutMs}ms)`);
+        output.debug(`[${displayLabel}] Sending prompt (${task.length} chars, timeout: ${timeoutMs}ms)`);
         const result = await session.sendAndWait({ prompt: task }, timeoutMs);
 
         // Prefer the full message from sendAndWait; fall back to streamed text
@@ -180,7 +191,7 @@ export async function runAgentTask(
           collected;
 
         await session.disconnect();
-        output.debug(`[${agentType}] Session completed: ${sessionId}`);
+        output.debug(`[${displayLabel}] Session completed: ${sessionId}`);
 
         return finalText;
       },
@@ -202,7 +213,7 @@ export async function runAgentTask(
     };
   } catch (err) {
     const classified = classifyError(err);
-    output.error(`[${agentType}] Failed after ${attempts} attempt(s): ${classified.message}`);
+    output.error(`[${displayLabel}] Failed after ${attempts} attempt(s): ${classified.message}`);
     if (classified.category === 'authentication') {
       output.dim('  → On enterprise/managed Macs: set GITHUB_TOKEN or GH_TOKEN to skip keychain');
       output.dim('  →   export GITHUB_TOKEN=<your-pat>   # GitHub PAT with Copilot access');

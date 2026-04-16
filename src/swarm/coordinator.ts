@@ -6,8 +6,28 @@
 import { runAgentTask } from '../agents/executor.js';
 import { hooks } from '../hooks/executor.js';
 import { getMemoryStore } from '../memory/store.js';
-import { output, agentBadge } from '../output.js';
+import { output, agentBadge, generateAgentName } from '../output.js';
 import type { SwarmTask, SwarmTopology, AgentResult } from '../types.js';
+
+/**
+ * Short human-readable description for a task.
+ * Uses task.label if set, otherwise takes the first line of the prompt (≤60 chars).
+ */
+function taskDescription(task: SwarmTask): string {
+  const text = task.label ?? task.prompt;
+  const firstLine = text.split('\n')[0].trim();
+  return firstLine.length > 60 ? firstLine.slice(0, 57) + '…' : firstLine;
+}
+
+/**
+ * Generate a unique display label for a task's agent instance.
+ * Uses an inventive adjective+name combo (e.g. "swift-Ada", "keen-Darwin")
+ * so parallel agents of the same type are memorable and distinguishable.
+ * Called once per task to keep the label stable for the whole run.
+ */
+function agentLabel(task: SwarmTask): string {
+  return generateAgentName(task.agentType);
+}
 
 export interface SwarmOptions {
   /** Called whenever an agent produces a text chunk. */
@@ -62,10 +82,11 @@ async function runSequential(
 ): Promise<void> {
   const mem = getMemoryStore();
   for (const task of tasks) {
-    output.info(`${agentBadge(task.agentType)} Running task: ${task.id}`);
+    output.info(`${agentBadge(task.agentType)} ${task.id} — ${taskDescription(task)}`);
     const result = await runAgentTask(task.agentType, buildPrompt(task, results, mem, ns), {
       retryConfig: task.retryConfig,
       ...task.sessionOptions,
+      label: agentLabel(task),
       onChunk: options.onProgress
         ? chunk => options.onProgress!(task.id, task.agentType, chunk)
         : undefined,
@@ -102,13 +123,21 @@ async function runHierarchical(
       );
     }
 
-    output.info(`Running ${ready.length} task(s) in parallel`);
+    if (ready.length === 1) {
+      output.info(`${agentBadge(ready[0].agentType)} ${ready[0].id} — ${taskDescription(ready[0])}`);
+    } else {
+      output.info(`Running ${ready.length} tasks in parallel:`);
+      for (const t of ready) {
+        output.dim(`  ${agentBadge(t.agentType)} ${t.id} — ${taskDescription(t)}`);
+      }
+    }
 
     const waveResults = await Promise.all(
       ready.map(task =>
         runAgentTask(task.agentType, buildPrompt(task, results, mem, ns), {
           retryConfig: task.retryConfig,
           ...task.sessionOptions,
+          label: agentLabel(task),
           onChunk: options.onProgress
             ? chunk => options.onProgress!(task.id, task.agentType, chunk)
             : undefined,
@@ -134,11 +163,16 @@ async function runMesh(
   options: SwarmOptions
 ): Promise<void> {
   const mem = getMemoryStore();
+  output.info(`Running all ${tasks.length} tasks concurrently (mesh):`);
+  for (const t of tasks) {
+    output.dim(`  ${agentBadge(t.agentType)} ${t.id} — ${taskDescription(t)}`);
+  }
   const settled = await Promise.allSettled(
     tasks.map(task =>
       runAgentTask(task.agentType, buildPrompt(task, results, mem, ns), {
         retryConfig: task.retryConfig,
         ...task.sessionOptions,
+        label: agentLabel(task),
         onChunk: options.onProgress
           ? chunk => options.onProgress!(task.id, task.agentType, chunk)
           : undefined,
