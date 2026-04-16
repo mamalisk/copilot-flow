@@ -111,6 +111,7 @@ phases:
 | `agentType` | agent phases | One of the 12 built-in agent types |
 | `topology` | swarm phases | `hierarchical` \| `sequential` \| `mesh` |
 | `agents` | swarm phases | List of agent types forming the pipeline |
+| `subTasks` | swarm + mesh + duplicate agents | Per-agent task descriptions (see [Parallel agent orchestration](#parallel-agent-orchestration)) |
 | `model` | — | Per-phase model override (see model resolution below) |
 | `output` | — | Output filename (default: `phase-{id}.md`, in the plan folder) |
 | `dependsOn` | — | List of phase IDs that must complete first |
@@ -159,6 +160,42 @@ outputs from concurrent phases remain distinguishable in the terminal:
 ```
 
 To force two phases to run serially, add an explicit `dependsOn` between them in the YAML.
+
+### Parallel agent orchestration
+
+When a swarm phase uses the same agent type more than once (e.g. three `coder` agents to
+work in parallel), every agent would receive the same prompt by default and attempt the
+entire task independently — colliding on file writes and duplicating effort.
+
+**The solution is `subTasks`.** Each entry overrides the generic `description` for the
+corresponding agent, giving it a distinct piece of work:
+
+```yaml
+- id: implement
+  description: Implement the solution in 3 programming languages simultaneously.
+  type: swarm
+  topology: mesh
+  agents: [coder, coder, coder]
+  subTasks:
+    - "Write hello_world.py — a Python script that prints 'Hello, World!'"
+    - "Write hello_world.js — a Node.js script that prints 'Hello, World!'"
+    - "Write hello_world.go — a Go program that prints 'Hello, World!'"
+  dependsOn: [design]
+```
+
+Each coder receives only its own subtask. The three agents run concurrently (`mesh`) and
+each writes a single file — no collisions.
+
+**The `plan` command generates `subTasks` automatically.** When the analyst agent detects
+that a phase uses duplicate agent types with `mesh` topology, it produces a `subTasks`
+list as part of the YAML output. You can also write `subTasks` by hand for full control.
+
+**Rules:**
+- `subTasks` length must match the `agents` list length.
+- When `subTasks` is omitted, all agents receive the same prompt (correct for
+  `hierarchical` pipelines where each agent builds on the previous one's output).
+- Use `topology: mesh` for truly independent parallel work; use `hierarchical` when
+  agents should run sequentially and each agent's output feeds the next.
 
 ### Options
 

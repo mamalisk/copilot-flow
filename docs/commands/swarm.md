@@ -65,6 +65,67 @@ Use `--model` to force all agents to the same model for a quick test run.
 | `sequential` | Agents run one at a time in order, each receiving the previous output | Strictly ordered pipelines |
 | `mesh` | All agents run concurrently with shared memory | Independent parallel analysis |
 
+### Automatic coordinator orchestration
+
+When `--agents` contains **duplicate agent types**, running them with the same prompt
+causes every agent to attempt the full task independently — colliding on file writes and
+duplicating effort. copilot-flow solves this automatically using a `coordinator` agent.
+
+**Explicit coordinator** — place `coordinator` immediately before the duplicate group:
+
+```bash
+copilot-flow swarm start \
+  --spec spec.md \
+  --topology hierarchical \
+  --agents researcher,coordinator,coder,coder,coder,reviewer
+```
+
+Execution waves:
+
+```
+researcher          ← analyses the problem
+coordinator         ← decomposes into 3 distinct coder subtasks
+coder + coder + coder  ← run in parallel, each on its own subtask
+reviewer            ← receives all 3 outputs and reviews the whole
+```
+
+The coordinator is prompted to produce a numbered plan (`Subtask 1:`, `Subtask 2:`,
+`Subtask 3:`). Each coder receives the coordinator's output as context and executes only
+its assigned subtask — no collisions, no duplicated work.
+
+**Implicit coordinator** — omit `coordinator` and copilot-flow injects one automatically:
+
+```bash
+copilot-flow swarm start \
+  --task "Analyse three design patterns: Factory, Observer, and Strategy" \
+  --topology hierarchical \
+  --agents researcher,researcher,researcher
+```
+
+A coordinator is silently added before the three researchers. It decomposes the task
+into three subtasks (one pattern per researcher), then all three run in parallel.
+
+**Downstream agents** — any agent listed after the parallel group (e.g. a `reviewer`)
+automatically depends on all parallel agents and receives all of their outputs as context:
+
+```bash
+--agents coordinator,coder,coder,coder,reviewer
+#  wave 1: coordinator
+#  wave 2: coder #1, coder #2, coder #3  (parallel)
+#  wave 3: reviewer  (sees all three coder outputs)
+```
+
+**Mesh + orchestration** — `mesh` topology ignores `dependsOn`, so the coordinator
+cannot run before the agents it coordinates. If your pipeline requires orchestration
+(i.e. any `dependsOn` relationship is present), copilot-flow automatically switches to
+`hierarchical` and emits a warning:
+
+```
+⚠ Coordinator orchestration requires ordered execution — overriding mesh to hierarchical.
+```
+
+Use `mesh` only for genuinely independent agents (no coordinator, no shared state).
+
 ### Examples
 
 ```bash
@@ -87,6 +148,19 @@ copilot-flow swarm start \
   --spec feature-brief.md \
   --agents researcher,coder,reviewer \
   --model gpt-4o
+
+# Parallel implementation with automatic coordinator orchestration
+copilot-flow swarm start \
+  --spec feature-brief.md \
+  --topology hierarchical \
+  --agents researcher,coordinator,coder,coder,coder,reviewer \
+  --stream
+
+# Parallel research (coordinator auto-injected for duplicate researchers)
+copilot-flow swarm start \
+  --task "Analyse three design patterns: Factory, Observer, and Strategy" \
+  --topology hierarchical \
+  --agents researcher,researcher,researcher
 
 # Chain swarm phases using --spec / --output
 copilot-flow swarm start --spec prd.md          --output phase1-epics.md

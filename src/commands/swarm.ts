@@ -66,7 +66,7 @@ export function registerSwarm(program: Command): void {
     .option('--spec <file>', 'Read task from a markdown/text file (alternative to --task)')
     .option('--output <file>', 'Write swarm results to a markdown file')
     .option('--topology <type>', 'Override topology for this run')
-    .option('--agents <list>', 'Comma-separated agent types (e.g. researcher,coder,reviewer)')
+    .option('--agents <list>', 'Comma-separated agent types (e.g. researcher,coder,reviewer). Duplicate types trigger automatic coordinator orchestration.')
     .option('--stream', 'Stream agent outputs as they arrive')
     .option('--max-retries <n>', 'Retry attempts per agent', '3')
     .option('--retry-delay <ms>', 'Initial retry delay in ms', '1000')
@@ -148,11 +148,19 @@ export function registerSwarm(program: Command): void {
         },
       }));
 
-      output.header(`Swarm: ${topology}`);
+      // Coordinator-based orchestration requires wave execution — mesh ignores dependsOn.
+      const hasDependencies = tasks.some(t => t.dependsOn?.length);
+      let effectiveTopology = topology;
+      if (topology === 'mesh' && hasDependencies) {
+        output.warn('Coordinator orchestration requires ordered execution — overriding mesh to hierarchical.');
+        effectiveTopology = 'hierarchical';
+      }
+
+      output.header(`Swarm: ${effectiveTopology}`);
       output.dim(`Pipeline: ${tasks.map(t => t.agentType).join(' → ')}`);
       output.blank();
 
-      const results = await runSwarm(tasks, topology, {
+      const results = await runSwarm(tasks, effectiveTopology, {
         onProgress: opts.stream
           ? (_taskId, agentType, chunk) => {
               process.stdout.write(`${agentBadge(agentType)} ${chunk}`);
@@ -210,6 +218,163 @@ export function registerSwarm(program: Command): void {
     });
 }
 
+// ── Orchestration helpers ──────────────────────────────────────────────────────
+
+/**
+ * Prompt for a coordinator that precedes N parallel agents of the same type.
+ * Produces a numbered plan so each agent can self-assign by finding "Subtask K:".
+ */
+function buildCoordinatorPrompt(
+  originalTask: string,
+  agentType: AgentType,
+  count: number,
+): string {
+  return (
+    `You are coordinating ${count} ${agentType} agents working in parallel.\n` +
+    `Decompose the task below into exactly ${count} distinct, non-overlapping subtasks.\n` +
+    `Label each one "Subtask 1:", "Subtask 2:", … "Subtask ${count}:" so each agent can self-assign.\n` +
+    `Each subtask must be fully self-contained — agents work independently without further clarification.\n\n` +
+    `Task:\n${originalTask}`
+  );
+}
+
+/**
+ * Prompt for a parallel agent that picks its subtask from the coordinator's output.
+ * The coordinator's output is prepended automatically by buildPrompt() in
+ * coordinator.ts via the dependsOn relationship — no extra wiring needed here.
+ */
+function buildParallelAgentPrompt(
+  originalTask: string,
+  agentType: AgentType,
+  index: number,
+  total: number,
+): string {
+  return (
+    `You are ${agentType} agent #${index} of ${total} working in parallel.\n` +
+    `A coordinator has divided the work into ${total} subtasks above.\n` +
+    `Find "Subtask ${index}:" in the coordinator's output and execute that specific subtask only.\n` +
+    `Do not duplicate work assigned to the other ${total - 1} agent(s).\n\n` +
+    `Overall task context:\n${originalTask}`
+  );
+}
+
+interface AgentEntry {
+  agentType: AgentType;
+  taskId: string;
+  prompt: string;
+  dependsOn: string[];
+  label?: string;
+  /** Metadata used to detect whether an explicit coordinator matches the next group. */
+  _coordinatesType?: AgentType;
+  _coordinatesCount?: number;
+}
+
+/**
+ * Parse an ordered agent list into AgentEntry records with:
+ * - automatic coordinator injection before any duplicate-type group
+ * - parallel agents all depending on their coordinator (not on each other)
+ * - the first agent after a parallel group depending on ALL parallel agents
+ * - sequential agents depending on the previous step
+ */
+function buildAgentEntries(task: string, types: AgentType[]): AgentEntry[] {
+  const entries: AgentEntry[] = [];
+  let counter = 0;
+  const nextId = () => `task-${++counter}`;
+  /** What the next entry should depend on (single previous, or all parallel agents). */
+  let currentDeps: string[] = [];
+
+  let i = 0;
+  while (i < types.length) {
+    const type = types[i];
+
+    // Count consecutive same-type run (coordinators never form groups)
+    let runLen = 1;
+    if (type !== 'coordinator') {
+      while (i + runLen < types.length && types[i + runLen] === type) runLen++;
+    }
+
+    // ── Coordinator ──────────────────────────────────────────────────────────
+    if (type === 'coordinator') {
+      const nextType = types[i + 1] as AgentType | undefined;
+      let nextRun = 0;
+      if (nextType && nextType !== 'coordinator') {
+        while (i + 1 + nextRun < types.length && types[i + 1 + nextRun] === nextType) nextRun++;
+      }
+
+      const taskId = nextId();
+      if (nextRun > 1) {
+        // This coordinator orchestrates the following duplicate group
+        entries.push({
+          agentType: 'coordinator',
+          taskId,
+          prompt: buildCoordinatorPrompt(task, nextType!, nextRun),
+          dependsOn: currentDeps.slice(),
+          _coordinatesType: nextType,
+          _coordinatesCount: nextRun,
+        });
+      } else {
+        // Coordinator with no following group — sequential agent with original task
+        entries.push({ agentType: 'coordinator', taskId, prompt: task, dependsOn: currentDeps.slice() });
+      }
+      currentDeps = [taskId];
+      i++;
+      continue;
+    }
+
+    // ── Duplicate group ──────────────────────────────────────────────────────
+    if (runLen > 1) {
+      const prev = entries[entries.length - 1];
+      let coordinatorId: string;
+
+      if (
+        prev?.agentType === 'coordinator' &&
+        prev._coordinatesType === type &&
+        prev._coordinatesCount === runLen
+      ) {
+        // Explicitly placed coordinator already covers this group
+        coordinatorId = prev.taskId;
+      } else {
+        // Auto-inject a coordinator immediately before this group
+        coordinatorId = nextId();
+        entries.push({
+          agentType: 'coordinator',
+          taskId: coordinatorId,
+          prompt: buildCoordinatorPrompt(task, type, runLen),
+          dependsOn: currentDeps.slice(),
+          _coordinatesType: type,
+          _coordinatesCount: runLen,
+        });
+        currentDeps = [coordinatorId];
+      }
+
+      const parallelIds: string[] = [];
+      for (let k = 0; k < runLen; k++) {
+        const taskId = nextId();
+        parallelIds.push(taskId);
+        entries.push({
+          agentType: type,
+          taskId,
+          prompt: buildParallelAgentPrompt(task, type, k + 1, runLen),
+          dependsOn: [coordinatorId],
+          label: `${type} #${k + 1} of ${runLen}`,
+        });
+      }
+      // Next sequential agent must wait for ALL parallel agents to complete
+      currentDeps = parallelIds;
+      i += runLen;
+      continue;
+    }
+
+    // ── Single sequential agent ──────────────────────────────────────────────
+    const taskId = nextId();
+    entries.push({ agentType: type, taskId, prompt: task, dependsOn: currentDeps.slice() });
+    currentDeps = [taskId];
+    i++;
+  }
+
+  return entries;
+}
+
 interface TaskRetryConfig {
   maxAttempts: number;
   initialDelayMs: number;
@@ -224,17 +389,18 @@ function buildTaskList(
 ): SwarmTask[] {
   if (agentsFlag) {
     const types = agentsFlag.split(',').map(s => s.trim() as AgentType);
-    return types.map((type, i) => ({
-      id: `task-${i + 1}`,
-      agentType: type,
-      prompt: task,
-      dependsOn: i > 0 ? [`task-${i}`] : undefined,
+    return buildAgentEntries(task, types).map(e => ({
+      id: e.taskId,
+      agentType: e.agentType,
+      prompt: e.prompt,
+      label: e.label,
+      dependsOn: e.dependsOn.length > 0 ? e.dependsOn : undefined,
       retryConfig,
       sessionOptions,
     }));
   }
 
-  // Default pipeline based on task type
+  // Default pipeline — all different types, no orchestration needed
   const suggested = routeTask(task);
   const pipeline: AgentType[] =
     suggested === 'coder'
