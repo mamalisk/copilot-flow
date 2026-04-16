@@ -1,18 +1,55 @@
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from 'fs';
+import { join } from 'path';
 import path from 'path';
 import { Command } from 'commander';
 import yaml from 'js-yaml';
+import matter from 'gray-matter';
 import { runAgentTask } from '../agents/executor.js';
 import { output } from '../output.js';
 import { loadConfig } from '../config.js';
 import { clientManager } from '../core/client-manager.js';
 import type { Plan, AgentType, SwarmTopology } from '../types.js';
+import type { CustomAgentConfig } from '@github/copilot-sdk';
 
 const AGENT_TYPES = [
   'coder', 'researcher', 'tester', 'reviewer', 'architect',
   'coordinator', 'analyst', 'debugger', 'documenter', 'optimizer',
   'security-auditor', 'performance-engineer',
 ].join(', ');
+
+/** Read repo instructions from disk. Returns undefined if disabled or not found. */
+function resolveInstructions(
+  flag: string | undefined,
+  disabled: boolean,
+  configFile: string,
+  autoLoad: boolean,
+): string | undefined {
+  if (disabled) return undefined;
+  const filePath = flag ?? (autoLoad ? configFile : undefined);
+  if (!filePath) return undefined;
+  if (existsSync(filePath)) return readFileSync(filePath, 'utf-8').trim();
+  return undefined;
+}
+
+/** Load all *.md custom agent definitions from one or more directories. */
+function loadAgentsFromDirs(dirs: string[]): CustomAgentConfig[] {
+  return dirs.flatMap(dir => {
+    if (!existsSync(dir)) return [];
+    return readdirSync(dir)
+      .filter(f => f.endsWith('.md'))
+      .map(f => {
+        const raw = readFileSync(join(dir, f), 'utf-8');
+        const { data, content } = matter(raw);
+        return {
+          name:        data.name        ?? f.replace(/\.md$/, ''),
+          displayName: data.displayName,
+          description: data.description,
+          tools:       data.tools,
+          prompt:      content.trim(),
+        } as CustomAgentConfig;
+      });
+  });
+}
 
 function buildPlannerPrompt(specContent: string): string {
   return `You are a software project planner for an AI agent pipeline. \
@@ -32,6 +69,11 @@ Rules:
   a subTasks list of the same length as agents. Each entry is the specific task description
   for that agent. This ensures each agent receives distinct work instead of attempting the
   entire task independently and colliding on shared resources.
+- model: optional model override for this phase (e.g. "o1" for a heavy reasoning phase).
+- timeoutMs: optional session timeout in ms for this phase. Use for phases expected to
+  take longer than the default (e.g. a large code-generation phase).
+- agentName: optional name of a custom agent to activate for this phase. Only set when
+  the user's --agent-dir provides a named agent that fits the phase's role.
 - Output ONLY valid YAML inside a single \`\`\`yaml code block. No other text.
 
 Example structure:
@@ -58,12 +100,15 @@ phases:
       - "Write hello_world.py — a Python script that prints 'Hello, World!'"
       - "Write hello_world.js — a Node.js script that prints 'Hello, World!'"
       - "Write hello_world.go — a Go program that prints 'Hello, World!'"
+    model: gpt-4o-mini    # optional: cheaper model for bulk code generation
+    timeoutMs: 1800000    # optional: 30 min for a heavy phase
+    agentName: billing-expert   # optional: activate a custom agent for this phase
     dependsOn: [design]
   - id: review
     description: Review the implementation for quality and correctness.
     type: agent
     agentType: reviewer
-    model: ''       # optional — leave empty to use config.agents.models.reviewer or defaultModel
+    model: o1             # optional: stronger model for validation
     dependsOn: [implement]
 \`\`\`
 
@@ -83,8 +128,21 @@ export function registerPlan(program: Command): void {
     .command('plan <spec>')
     .description('Analyse a spec file and generate a phased execution plan (YAML)')
     .option('-f, --file <path>', 'Output path for the plan file (default: .copilot-flow/plans/{spec}-{ts}/phases.yaml)')
-    .option('--model <model>', 'Model override')
-    .action(async (spec: string, opts: { file?: string; model?: string }) => {
+    .option('--model <model>', 'Model override for the planner agent')
+    .option('--agent-dir <path>', 'Directory of *.md custom agent definitions (repeatable)',
+      (val, prev: string[]) => [...prev, val], [] as string[])
+    .option('--skill-dir <path>', 'Directory to scan for SKILL.md files (repeatable)',
+      (val, prev: string[]) => [...prev, val], [] as string[])
+    .option('--instructions <file>', 'Repo instructions file to inject (default: auto-detects .github/copilot-instructions.md)')
+    .option('--no-instructions', 'Disable auto-detection of copilot-instructions.md')
+    .action(async (spec: string, opts: {
+      file?: string;
+      model?: string;
+      agentDir: string[];
+      skillDir: string[];
+      instructions?: string;
+      noInstructions?: boolean;
+    }) => {
       if (!existsSync(spec)) {
         output.error(`Spec file not found: ${spec}`);
         process.exit(1);
@@ -96,6 +154,16 @@ export function registerPlan(program: Command): void {
       const specContent = readFileSync(spec, 'utf-8').trim();
       const config = loadConfig();
 
+      const agentDirs = [...config.agents.directories, ...opts.agentDir].filter(Boolean);
+      const skillDirs = [...config.skills.directories, ...opts.skillDir].filter(Boolean);
+      const customAgents = loadAgentsFromDirs(agentDirs);
+      const instructionsContent = resolveInstructions(
+        opts.instructions,
+        opts.noInstructions ?? false,
+        config.instructions.file,
+        config.instructions.autoLoad,
+      );
+
       output.info(`Analysing spec: ${spec}`);
       output.info(`Generating plan → ${outFile}`);
       output.blank();
@@ -103,6 +171,9 @@ export function registerPlan(program: Command): void {
       const result = await runAgentTask('analyst', buildPlannerPrompt(specContent), {
         model: opts.model ?? config.defaultModel,
         timeoutMs: config.defaultTimeoutMs,
+        skillDirectories:    skillDirs.length    ? skillDirs    : undefined,
+        customAgents:        customAgents.length ? customAgents : undefined,
+        instructionsContent: instructionsContent,
       });
 
       if (!result.success) {

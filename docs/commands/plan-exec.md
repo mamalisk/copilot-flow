@@ -24,6 +24,10 @@ sequential phases — each either a single agent or a multi-agent swarm.
 |------|---------|-------------|
 | `-f, --file <path>` | `.copilot-flow/plans/{spec}-{timestamp}/phases.yaml` | Output file for the generated plan |
 | `--model <model>` | from config | Model override for the planner agent |
+| `--agent-dir <path>` | `.github/agents` | Extra directory of `*.md` custom agent definitions (repeatable; adds to default) |
+| `--skill-dir <path>` | `.github/skills` | Extra directory to scan for `SKILL.md` files (repeatable; adds to default) |
+| `--instructions <file>` | auto-detect | Repo instructions file to inject into the planner |
+| `--no-instructions` | — | Disable auto-detection of `copilot-instructions.md` |
 
 ### Output location
 
@@ -46,7 +50,7 @@ Use `-f` to control the location when you want to keep things tidy or re-use a s
 
 ### Example
 
-```bash
+```bash 
 # Auto-named plan
 copilot-flow plan prd.md
 
@@ -81,6 +85,8 @@ phases:
     topology: hierarchical
     agents: [coder, tester]
     model: gpt-4o-mini    # optional: cheaper model for bulk code generation
+    timeoutMs: 1800000    # optional: 30 min for a heavy phase
+    agentName: billing-expert   # optional: activate a custom agent for this phase
     dependsOn: [design]
 
   - id: frontend
@@ -112,7 +118,11 @@ phases:
 | `topology` | swarm phases | `hierarchical` \| `sequential` \| `mesh` |
 | `agents` | swarm phases | List of agent types forming the pipeline |
 | `subTasks` | swarm + mesh + duplicate agents | Per-agent task descriptions (see [Parallel agent orchestration](#parallel-agent-orchestration)) |
-| `model` | — | Per-phase model override (see model resolution below) |
+| `model` | — | Per-phase model override (see [Model resolution](#model-resolution) below) |
+| `timeoutMs` | — | Session timeout in ms for this phase; overrides `--timeout` and `config.defaultTimeoutMs` |
+| `agentName` | — | Name of a custom agent (from `--agent-dir` or `config.agents.directories`) to activate |
+| `agentDirectories` | — | Extra directories to load `*.md` custom agent definitions from for this phase |
+| `skillDirectories` | — | Extra directories to scan for `SKILL.md` files for this phase |
 | `output` | — | Output filename (default: `phase-{id}.md`, in the plan folder) |
 | `dependsOn` | — | List of phase IDs that must complete first |
 | `acceptanceCriteria` | — | Natural-language pass/fail criteria evaluated by a reviewer agent |
@@ -204,9 +214,67 @@ list as part of the YAML output. You can also write `subTasks` by hand for full 
 | `--phase <id>` | — | Run only this phase (deps must have output files on disk) |
 | `--force` | — | Re-run a phase even if its output file already exists |
 | `--model <model>` | from config | Global model override for all agents in this run |
-| `--timeout <ms>` | from config | Session timeout per agent |
+| `--timeout <ms>` | from config | Session timeout per agent (phase-level `timeoutMs` takes precedence) |
 | `--max-acceptance-retries <n>` | `2` | Max re-runs on acceptance failure (3 total attempts) |
 | `--stream` | — | Stream output as it arrives |
+| `--agent-dir <path>` | `.github/agents` | Extra directory of `*.md` custom agent definitions (repeatable; adds to default) |
+| `--skill-dir <path>` | `.github/skills` | Extra directory to scan for `SKILL.md` files (repeatable; adds to default) |
+| `--instructions <file>` | auto-detect | Repo instructions file to inject into every agent session |
+| `--no-instructions` | — | Disable auto-detection of `copilot-instructions.md` |
+
+### Custom agents and skills
+
+By convention, copilot-flow scans **`.github/agents`** for custom agent definitions and
+**`.github/skills`** for skill files automatically — no flags needed when you follow this
+layout.  These paths are the default values of `config.agents.directories` and
+`config.skills.directories` respectively.
+
+To use a different location, either edit `.copilot-flow/config.json` (permanent override)
+or pass the directory flags on the command line (additive; stacks with the defaults):
+
+```bash
+copilot-flow exec phases.yaml \
+  --agent-dir .copilot/agents \
+  --skill-dir .copilot/skills
+```
+
+**Per-phase activation** uses the `agentName`, `agentDirectories`, and `skillDirectories`
+fields in the YAML to customise individual phases without affecting others:
+
+```yaml
+phases:
+  - id: billing
+    description: Implement billing logic.
+    type: agent
+    agentType: coder
+    agentName: billing-expert          # activate a named custom agent
+    agentDirectories: [.copilot/agents/billing]  # extra agent dir for this phase only
+    skillDirectories: [.copilot/skills/billing]  # extra skill dir for this phase only
+    dependsOn: [design]
+
+  - id: review
+    description: Security review.
+    type: agent
+    agentType: reviewer
+    agentName: compliance-auditor      # different agent for this phase
+    dependsOn: [billing]
+```
+
+For swarm phases, `agentName` is activated for **every** session in the swarm.
+
+**Per-phase directories are merged** with the run-level directories, so a phase always has
+access to both the global agents/skills and its own extras.
+
+**Timeout overrides** let you give long-running phases more time without changing the
+global `--timeout`:
+
+```yaml
+- id: implement
+  type: swarm
+  topology: mesh
+  agents: [coder, coder, coder]
+  timeoutMs: 1800000   # 30 min for this phase; other phases use the global default
+```
 
 ### Model resolution
 
@@ -239,6 +307,23 @@ copilot-flow exec phases.yaml --model gpt-4o-mini
 
 # Increase retries for acceptance checks
 copilot-flow exec phases.yaml --max-acceptance-retries 3
+
+# Inject custom agents and skills for the whole run
+copilot-flow exec phases.yaml \
+  --agent-dir .copilot/agents \
+  --skill-dir .copilot/skills
+
+# Load a custom agent from a non-default directory and activate it for the whole run.
+# The agent definition lives at .my-agents/billing-expert.md and sets its own system
+# prompt + tool restrictions. Every phase in the run will have it available; individual
+# phases can activate it by name via agentName: billing-expert in the YAML.
+copilot-flow exec phases.yaml --agent-dir .my-agents
+
+# Use repo instructions (auto-detected from .github/copilot-instructions.md by default)
+copilot-flow exec phases.yaml --instructions docs/system-instructions.md
+
+# Disable repo instructions auto-detection
+copilot-flow exec phases.yaml --no-instructions
 ```
 
 ### Resuming after failure

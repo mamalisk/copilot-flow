@@ -37,11 +37,11 @@ export const DEFAULT_CONFIG: CopilotFlowConfig = {
     autoLoad: true,
   },
   skills: {
-    directories: [],
+    directories: ['.github/skills'],
     disabled: [],
   },
   agents: {
-    directories: [],
+    directories: ['.github/agents'],
     models: {},
   },
 };

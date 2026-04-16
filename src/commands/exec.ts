@@ -1,15 +1,52 @@
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from 'fs';
+import { join } from 'path';
 import path from 'path';
 import { Command } from 'commander';
 import yaml from 'js-yaml';
+import matter from 'gray-matter';
 import { runAgentTask } from '../agents/executor.js';
 import { runSwarm } from '../swarm/coordinator.js';
 import { output, agentBadge, generateAgentName } from '../output.js';
 import { loadConfig } from '../config.js';
 import { clientManager } from '../core/client-manager.js';
 import type { Plan, PlanPhase, SwarmTask, AgentType, CopilotFlowConfig } from '../types.js';
+import type { CustomAgentConfig } from '@github/copilot-sdk';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/** Read repo instructions from disk. Returns undefined if disabled or not found. */
+function resolveInstructions(
+  flag: string | undefined,
+  disabled: boolean,
+  configFile: string,
+  autoLoad: boolean,
+): string | undefined {
+  if (disabled) return undefined;
+  const filePath = flag ?? (autoLoad ? configFile : undefined);
+  if (!filePath) return undefined;
+  if (existsSync(filePath)) return readFileSync(filePath, 'utf-8').trim();
+  return undefined;
+}
+
+/** Load all *.md custom agent definitions from one or more directories. */
+function loadAgentsFromDirs(dirs: string[]): CustomAgentConfig[] {
+  return dirs.flatMap(dir => {
+    if (!existsSync(dir)) return [];
+    return readdirSync(dir)
+      .filter(f => f.endsWith('.md'))
+      .map(f => {
+        const raw = readFileSync(join(dir, f), 'utf-8');
+        const { data, content } = matter(raw);
+        return {
+          name:        data.name        ?? f.replace(/\.md$/, ''),
+          displayName: data.displayName,
+          description: data.description,
+          tools:       data.tools,
+          prompt:      content.trim(),
+        } as CustomAgentConfig;
+      });
+  });
+}
 
 /**
  * Resolve model for a specific agent type within a phase.
@@ -120,6 +157,13 @@ async function runAcceptanceCheck(
   return { pass, reason };
 }
 
+/** Session extensions resolved once per run and optionally overridden per phase. */
+interface SessionExts {
+  customAgents: CustomAgentConfig[];
+  skillDirs: string[];
+  instructionsContent: string | undefined;
+}
+
 /**
  * Execute a single phase (agent or swarm), including the acceptance-criteria
  * retry loop. Throws on failure so `Promise.all` can reject the whole wave.
@@ -139,6 +183,7 @@ async function runPhase(
   timeoutMs: number,
   globalMaxRetries: number,
   parallelCount: number,
+  sessionExts: SessionExts,
 ): Promise<{ id: string; output: string; outFile: string; skipped: boolean }> {
   const outFile = phaseOutputFile(phase, planDir);
 
@@ -150,6 +195,19 @@ async function runPhase(
   }
 
   const streamPrefix = parallelCount > 1 && opts.stream ? `[${phase.id}] ` : '';
+
+  // Per-phase timeout overrides the global CLI --timeout / config value
+  const phaseTimeoutMs = phase.timeoutMs ?? timeoutMs;
+
+  // Merge global session extensions with per-phase overrides
+  const phaseSkillDirs = [
+    ...sessionExts.skillDirs,
+    ...(phase.skillDirectories ?? []),
+  ].filter(Boolean);
+
+  const phaseAgents = phase.agentDirectories?.length
+    ? [...sessionExts.customAgents, ...loadAgentsFromDirs(phase.agentDirectories)]
+    : sessionExts.customAgents;
 
   const maxRetries = phase.maxAcceptanceRetries ?? globalMaxRetries;
   let attempt = 0;
@@ -171,7 +229,14 @@ async function runPhase(
         label: `${phase.id} — step ${i + 1}: ${agentType}`,
         prompt: buildPhasePrompt(phase, plan, phaseResults, planDir, phase.subTasks?.[i]),
         dependsOn: topology === 'mesh' ? undefined : i > 0 ? [`${phase.id}-task-${i}`] : undefined,
-        sessionOptions: { model: resolveModel(agentType, phase, cliModel, config), timeoutMs },
+        sessionOptions: {
+          model: resolveModel(agentType, phase, cliModel, config),
+          timeoutMs: phaseTimeoutMs,
+          skillDirectories: phaseSkillDirs.length ? phaseSkillDirs : undefined,
+          customAgents:     phaseAgents.length    ? phaseAgents    : undefined,
+          agentName:        phase.agentName,
+          instructionsContent: sessionExts.instructionsContent,
+        },
       }));
 
       const results = await runSwarm(tasks, topology, {
@@ -193,8 +258,12 @@ async function runPhase(
 
       const result = await runAgentTask(agentType, prompt, {
         model: resolveModel(agentType, phase, cliModel, config),
-        timeoutMs,
+        timeoutMs: phaseTimeoutMs,
         label: generateAgentName(agentType),
+        skillDirectories: phaseSkillDirs.length ? phaseSkillDirs : undefined,
+        customAgents:     phaseAgents.length    ? phaseAgents    : undefined,
+        agentName:        phase.agentName,
+        instructionsContent: sessionExts.instructionsContent,
         onChunk: opts.stream
           ? chunk => process.stdout.write(`${streamPrefix}${chunk}`)
           : undefined,
@@ -214,7 +283,7 @@ async function runPhase(
     const check = await runAcceptanceCheck(
       phase.acceptanceCriteria,
       phaseOutput,
-      timeoutMs,
+      phaseTimeoutMs,
       resolveModel('reviewer', phase, cliModel, config),
     );
 
@@ -251,6 +320,12 @@ export function registerExec(program: Command): void {
     .option('--timeout <ms>', 'Session timeout per agent in ms (overrides config)')
     .option('--max-acceptance-retries <n>', 'Max re-runs on acceptance failure (default: 2)', '2')
     .option('--stream', 'Stream agent output as it arrives')
+    .option('--agent-dir <path>', 'Directory of *.md custom agent definitions (repeatable)',
+      (val, prev: string[]) => [...prev, val], [] as string[])
+    .option('--skill-dir <path>', 'Directory to scan for SKILL.md files (repeatable)',
+      (val, prev: string[]) => [...prev, val], [] as string[])
+    .option('--instructions <file>', 'Repo instructions file to inject (default: auto-detects .github/copilot-instructions.md)')
+    .option('--no-instructions', 'Disable auto-detection of copilot-instructions.md')
     .action(async (planFile: string, opts: {
       phase?: string;
       force: boolean;
@@ -258,6 +333,10 @@ export function registerExec(program: Command): void {
       timeout?: string;
       maxAcceptanceRetries: string;
       stream: boolean;
+      agentDir: string[];
+      skillDir: string[];
+      instructions?: string;
+      noInstructions?: boolean;
     }) => {
       if (!existsSync(planFile)) {
         output.error(`Plan file not found: ${planFile}`);
@@ -285,6 +364,20 @@ export function registerExec(program: Command): void {
       const planDir = path.dirname(path.resolve(planFile));
       mkdirSync(planDir, { recursive: true });
 
+      // Resolve session extensions once for the whole run
+      const agentDirs = [...config.agents.directories, ...opts.agentDir].filter(Boolean);
+      const skillDirs = [...config.skills.directories, ...opts.skillDir].filter(Boolean);
+      const sessionExts: SessionExts = {
+        customAgents: loadAgentsFromDirs(agentDirs),
+        skillDirs,
+        instructionsContent: resolveInstructions(
+          opts.instructions,
+          opts.noInstructions ?? false,
+          config.instructions.file,
+          config.instructions.autoLoad,
+        ),
+      };
+
       // ── Single-phase path ────────────────────────────────────────────────
       if (opts.phase) {
         const target = plan.phases.find(p => p.id === opts.phase);
@@ -300,7 +393,7 @@ export function registerExec(program: Command): void {
         try {
           const r = await runPhase(
             target, plan, phaseResults, planDir,
-            opts, config, cliModel, timeoutMs, globalMaxRetries, 1,
+            opts, config, cliModel, timeoutMs, globalMaxRetries, 1, sessionExts,
           );
           if (!r.skipped) {
             if (opts.stream) output.blank();
@@ -356,7 +449,7 @@ export function registerExec(program: Command): void {
             wave.map(phase =>
               runPhase(
                 phase, plan, readonlyResults, planDir,
-                opts, config, cliModel, timeoutMs, globalMaxRetries, wave.length,
+                opts, config, cliModel, timeoutMs, globalMaxRetries, wave.length, sessionExts,
               ),
             ),
           );

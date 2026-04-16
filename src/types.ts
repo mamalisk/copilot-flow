@@ -218,6 +218,12 @@ export interface PlanPhase {
    */
   model?: string;
   /**
+   * Session timeout in ms for this phase. Overrides the CLI --timeout flag and
+   * config.defaultTimeoutMs. Useful for long-running phases (e.g. a heavy coder
+   * phase) without changing the timeout for the whole run.
+   */
+  timeoutMs?: number;
+  /**
    * Natural-language description of what the output must contain or achieve.
    * When set, a reviewer agent evaluates the output before the phase is marked
    * complete. On failure the phase is re-run up to maxAcceptanceRetries times.
@@ -233,6 +239,22 @@ export interface PlanPhase {
    * Length must match the `agents` array length.
    */
   subTasks?: string[];
+  /**
+   * Name of a custom agent (loaded from agentDirectories, config.agents.directories,
+   * or the CLI --agent-dir list) to activate for this phase.
+   * For swarm phases the same agent is activated for every session in the swarm.
+   */
+  agentName?: string;
+  /**
+   * Additional directories to scan for *.md custom agent definitions for this phase.
+   * Merged with config.agents.directories and the CLI --agent-dir list.
+   */
+  agentDirectories?: string[];
+  /**
+   * Additional directories to scan for SKILL.md files for this phase.
+   * Merged with config.skills.directories and the CLI --skill-dir list.
+   */
+  skillDirectories?: string[];
 }
 
 export interface Plan {

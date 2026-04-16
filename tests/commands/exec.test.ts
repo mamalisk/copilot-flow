@@ -30,7 +30,7 @@ vi.mock('../../src/core/client-manager.js', () => ({
 const mockLoadConfig = vi.fn().mockReturnValue({
   defaultModel: '',
   defaultTimeoutMs: 1_200_000,
-  agents: { models: {} },
+  agents: { models: {}, directories: [] },
   skills: { directories: [], disabled: [] },
   instructions: { file: '.github/copilot-instructions.md', autoLoad: false },
 });
@@ -125,7 +125,7 @@ beforeEach(() => {
   mockLoadConfig.mockReturnValue({
     defaultModel: '',
     defaultTimeoutMs: 1_200_000,
-    agents: { models: {} },
+    agents: { models: {}, directories: [] },
     skills: { directories: [], disabled: [] },
     instructions: { file: '.github/copilot-instructions.md', autoLoad: false },
   });
@@ -465,7 +465,7 @@ describe('exec — model resolution', () => {
     mockLoadConfig.mockReturnValue({
       defaultModel: '',
       defaultTimeoutMs: 1_200_000,
-      agents: { models: { analyst: 'claude-sonnet-4-5' } },
+      agents: { models: { analyst: 'claude-sonnet-4-5' }, directories: [] },
       skills: { directories: [], disabled: [] },
       instructions: { file: '.github/copilot-instructions.md', autoLoad: false },
     });
@@ -489,7 +489,7 @@ describe('exec — model resolution', () => {
     mockLoadConfig.mockReturnValue({
       defaultModel: 'gpt-4o',
       defaultTimeoutMs: 1_200_000,
-      agents: { models: {} },
+      agents: { models: {}, directories: [] },
       skills: { directories: [], disabled: [] },
       instructions: { file: '.github/copilot-instructions.md', autoLoad: false },
     });
@@ -639,7 +639,7 @@ describe('exec — acceptance criteria', () => {
     mockLoadConfig.mockReturnValue({
       defaultModel: '',
       defaultTimeoutMs: 1_200_000,
-      agents: { models: { reviewer: 'o1-mini' } },
+      agents: { models: { reviewer: 'o1-mini' }, directories: [] },
       skills: { directories: [], disabled: [] },
       instructions: { file: '.github/copilot-instructions.md', autoLoad: false },
     });
@@ -721,19 +721,9 @@ describe('exec — swarm phases', () => {
 
 describe('exec — streaming', () => {
   it('prefixes chunks with [phase-id] when streaming in parallel wave', async () => {
-    const written: string[] = [];
-    const origWrite = process.stdout.write.bind(process.stdout);
-    const writeSpy = vi.spyOn(process.stdout, 'write').mockImplementation((chunk: unknown) => {
-      written.push(String(chunk));
-      return true;
-    });
-
-    mockRunAgentTask.mockImplementation(async (_type: string, prompt: string, options: Record<string, unknown>) => {
-      const id = (prompt as string).match(/phase "([^"]+)"/)?.[1] ?? '?';
-      const onChunk = options?.onChunk as ((c: string) => void) | undefined;
-      onChunk?.(`chunk from ${id}`);
-      return successResult(`${id} output`);
-    });
+    // Collect prefixed output by intercepting process.stdout.write directly
+    const chunks: string[] = [];
+    mockRunAgentTask.mockResolvedValue(successResult('output'));
 
     const planFile = writePlan(tmpDir, [
       { id: 'p', description: 'P', type: 'agent', agentType: 'analyst' },
@@ -742,26 +732,38 @@ describe('exec — streaming', () => {
 
     const code = await runExec(planFile, ['--stream']);
 
-    writeSpy.mockRestore();
-
     expect(code).toBe(0);
-    // Chunks from parallel phases must be prefixed with [phase-id]
-    expect(written.some(s => s.includes('[p] '))).toBe(true);
-    expect(written.some(s => s.includes('[q] '))).toBe(true);
+    // Both phases ran; retrieve the onChunk callbacks passed to runAgentTask
+    const calls = mockRunAgentTask.mock.calls as [string, string, Record<string, unknown>][];
+    const phaseIds = calls.map(([, prompt]) =>
+      (prompt as string).match(/phase "([^"]+)"/)?.[1] ?? '?'
+    );
+    // Both p and q must have been called
+    expect(phaseIds).toContain('p');
+    expect(phaseIds).toContain('q');
+
+    // The onChunk for each phase must add the "[phase-id] " prefix
+    for (const [, prompt, opts] of calls) {
+      const id = (prompt as string).match(/phase "([^"]+)"/)?.[1];
+      if (!id) continue;
+      const onChunk = opts?.onChunk as ((c: string) => void) | undefined;
+      // onChunk is only defined when --stream is passed
+      expect(typeof onChunk).toBe('function');
+      const origWrite = process.stdout.write.bind(process.stdout);
+      const written: string[] = [];
+      const spy = vi.spyOn(process.stdout, 'write').mockImplementation((c: unknown) => {
+        written.push(String(c));
+        return true;
+      });
+      onChunk!('test');
+      spy.mockRestore();
+      expect(written.join('')).toContain(`[${id}] test`);
+      chunks.push(...written);
+    }
   });
 
   it('does not prefix chunks in single-phase stream mode', async () => {
-    const written: string[] = [];
-    vi.spyOn(process.stdout, 'write').mockImplementation((chunk: unknown) => {
-      written.push(String(chunk));
-      return true;
-    });
-
-    mockRunAgentTask.mockImplementation(async (_type: string, _prompt: string, options: Record<string, unknown>) => {
-      const onChunk = options?.onChunk as ((c: string) => void) | undefined;
-      onChunk?.('hello');
-      return successResult('output');
-    });
+    mockRunAgentTask.mockResolvedValue(successResult('output'));
 
     const planFile = writePlan(tmpDir, [
       { id: 'solo', description: 'Solo', type: 'agent', agentType: 'analyst' },
@@ -769,12 +771,24 @@ describe('exec — streaming', () => {
 
     const code = await runExec(planFile, ['--stream']);
 
-    vi.restoreAllMocks();
-
     expect(code).toBe(0);
-    // Single phase — no prefix
-    const chunkWrites = written.filter(s => s === 'hello');
-    expect(chunkWrites.length).toBeGreaterThan(0);
-    expect(written.some(s => s.includes('[solo] '))).toBe(false);
+    const calls = mockRunAgentTask.mock.calls as [string, string, Record<string, unknown>][];
+    expect(calls.length).toBe(1);
+
+    const onChunk = calls[0][2]?.onChunk as ((c: string) => void) | undefined;
+    expect(typeof onChunk).toBe('function');
+
+    const written: string[] = [];
+    const spy = vi.spyOn(process.stdout, 'write').mockImplementation((c: unknown) => {
+      written.push(String(c));
+      return true;
+    });
+    onChunk!('hello');
+    spy.mockRestore();
+
+    // Single phase — chunk must NOT be prefixed with [phase-id]
+    const out = written.join('');
+    expect(out).toContain('hello');
+    expect(out).not.toContain('[solo] ');
   });
 });

@@ -29,9 +29,9 @@ copilot-flow swarm start [options]
 | `--stream` | — | Stream agent output as it arrives |
 | `--instructions <file>` | auto-detected | Inject repo instructions |
 | `--no-instructions` | — | Disable auto-detection |
-| `--skill-dir <path>` | — | Scan for `SKILL.md` files (repeatable) |
+| `--skill-dir <path>` | `.github/skills` | Extra directory to scan for `SKILL.md` files (repeatable; adds to default) |
 | `--disable-skill <name>` | — | Disable a skill (repeatable) |
-| `--agent-dir <path>` | — | Directory of custom agent definitions (repeatable) |
+| `--agent-dir <path>` | `.github/agents` | Extra directory of `*.md` custom agent definitions (repeatable; adds to default) |
 | `--agent <name>` | — | Activate a custom agent for every session in the swarm |
 
 ### Model resolution
