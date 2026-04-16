@@ -28,6 +28,10 @@ Rules:
 - dependsOn lists phase ids that must complete before this phase starts.
 - The first phase must have an empty dependsOn list.
 - output is optional — if omitted the file will be named phase-{id}.md.
+- subTasks: when topology is "mesh" AND agents contains duplicate types, you MUST provide
+  a subTasks list of the same length as agents. Each entry is the specific task description
+  for that agent. This ensures each agent receives distinct work instead of attempting the
+  entire task independently and colliding on shared resources.
 - Output ONLY valid YAML inside a single \`\`\`yaml code block. No other text.
 
 Example structure:
@@ -46,10 +50,14 @@ phases:
     agents: [architect, analyst]
     dependsOn: [research]
   - id: implement
-    description: Implement the designed solution.
+    description: Implement the solution in 3 programming languages as fast as possible.
     type: swarm
-    topology: hierarchical
-    agents: [coder, coder, tester]
+    topology: mesh
+    agents: [coder, coder, coder]
+    subTasks:
+      - "Write hello_world.py — a Python script that prints 'Hello, World!'"
+      - "Write hello_world.js — a Node.js script that prints 'Hello, World!'"
+      - "Write hello_world.go — a Go program that prints 'Hello, World!'"
     dependsOn: [design]
   - id: review
     description: Review the implementation for quality and correctness.

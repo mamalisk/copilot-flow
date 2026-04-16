@@ -66,6 +66,7 @@ function buildPhasePrompt(
   plan: Plan,
   phaseResults: ReadonlyMap<string, string>,
   planDir: string,
+  taskDescription?: string,
 ): string {
   const sections: string[] = [];
 
@@ -87,7 +88,7 @@ function buildPhasePrompt(
     }
   }
 
-  sections.push(`## Your task — phase "${phase.id}"\n\n${phase.description}`);
+  sections.push(`## Your task — phase "${phase.id}"\n\n${taskDescription ?? phase.description}`);
 
   return sections.join('\n\n---\n\n');
 }
@@ -168,8 +169,8 @@ async function runPhase(
         id: `${phase.id}-task-${i + 1}`,
         agentType,
         label: `${phase.id} — step ${i + 1}: ${agentType}`,
-        prompt,
-        dependsOn: i > 0 ? [`${phase.id}-task-${i}`] : undefined,
+        prompt: buildPhasePrompt(phase, plan, phaseResults, planDir, phase.subTasks?.[i]),
+        dependsOn: topology === 'mesh' ? undefined : i > 0 ? [`${phase.id}-task-${i}`] : undefined,
         sessionOptions: { model: resolveModel(agentType, phase, cliModel, config), timeoutMs },
       }));
 

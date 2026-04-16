@@ -225,6 +225,14 @@ export interface PlanPhase {
   acceptanceCriteria?: string;
   /** Max additional attempts on acceptance failure. Default: 2 (3 total). */
   maxAcceptanceRetries?: number;
+  /**
+   * Per-agent task descriptions for swarm phases with duplicate agent types.
+   * When set, `subTasks[i]` replaces the generic phase `description` in the
+   * prompt for the i-th agent. Required for mesh topology with duplicate agent types
+   * so each agent receives distinct work instead of attempting the same task.
+   * Length must match the `agents` array length.
+   */
+  subTasks?: string[];
 }
 
 export interface Plan {
