@@ -8,6 +8,8 @@ import { listAgentTypes, routeTask } from '../agents/registry.js';
 import { output, agentBadge, printTable, setLogLevel, withSpinner } from '../output.js';
 import { loadConfig } from '../config.js';
 import { clientManager } from '../core/client-manager.js';
+import { distillToMemory } from '../memory/distill.js';
+import { buildMemoryContext } from '../memory/inject.js';
 import type { AgentType } from '../types.js';
 import type { BackoffStrategy } from '../core/retry.js';
 import type { CustomAgentConfig } from '@github/copilot-sdk';
@@ -79,6 +81,7 @@ export function registerAgent(program: Command): void {
     .option('--agent-dir <path>', 'Directory of *.json custom agent definitions (repeatable)',
       (val, prev: string[]) => [...prev, val], [] as string[])
     .option('--agent <name>', 'Name of custom agent to activate for this session')
+    .option('--memory-namespace <ns>', 'Enable cross-run memory: distil output and inject prior context under this namespace')
     .option('--verbose', 'Print debug info: session lifecycle, model, prompt size, retries')
     .action(async (opts: {
       task?: string;
@@ -98,6 +101,7 @@ export function registerAgent(program: Command): void {
       disableSkill: string[];
       agentDir: string[];
       agent?: string;
+      memoryNamespace?: string;
       verbose: boolean;
     }) => {
       let task = opts.task ?? '';
@@ -132,9 +136,13 @@ export function registerAgent(program: Command): void {
 
       if (opts.verbose) setLogLevel('debug');
 
+      // Prepend cross-run memory context if a namespace was provided
+      const memoryContext = opts.memoryNamespace ? buildMemoryContext(opts.memoryNamespace) : '';
+      const taskWithMemory = memoryContext + task;
+
       output.info(`${agentBadge(agentType)} Running: ${task.slice(0, 80)}`);
 
-      const runTask = () => runAgentTask(agentType, task, {
+      const runTask = () => runAgentTask(agentType, taskWithMemory, {
         model: opts.model ?? config.agents.models?.[agentType] ?? config.defaultModel,
         timeoutMs: opts.timeout !== '1200000' ? parseInt(opts.timeout, 10) : config.defaultTimeoutMs,
         retryConfig: opts.retry === false
@@ -170,6 +178,11 @@ export function registerAgent(program: Command): void {
         if (opts.output) {
           writeFileSync(opts.output, `# Agent Output\n\n${result.output}\n`, 'utf-8');
           output.success(`Result written to ${opts.output}`);
+        }
+        if (opts.memoryNamespace) {
+          const model = opts.model ?? config.agents.models?.[agentType] ?? config.defaultModel;
+          output.dim(`Distilling to memory (namespace: ${opts.memoryNamespace})…`);
+          await distillToMemory(result.output, opts.memoryNamespace, 'agent:run', model);
         }
       } else {
         output.error(`Failed: ${result.error}`);

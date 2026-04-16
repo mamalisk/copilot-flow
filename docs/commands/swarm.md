@@ -33,6 +33,7 @@ copilot-flow swarm start [options]
 | `--disable-skill <name>` | — | Disable a skill (repeatable) |
 | `--agent-dir <path>` | `.github/agents` | Extra directory of `*.md` custom agent definitions (repeatable; adds to default) |
 | `--agent <name>` | — | Activate a custom agent for every session in the swarm |
+| `--memory-namespace <ns>` | — | Enable cross-run memory: distil each task's output and inject prior context |
 
 ### Model resolution
 
@@ -56,6 +57,24 @@ CLI invocation — just configure it once in `.copilot-flow/config.json`:
 ```
 
 Use `--model` to force all agents to the same model for a quick test run.
+
+### Cross-run memory
+
+Pass `--memory-namespace <name>` to persist distilled knowledge across swarm runs.
+Each task's output is summarised into up to 10 compact facts and stored in the SQLite
+memory store (30-day TTL). On subsequent runs, those facts are injected into every task
+prompt as a `## Remembered context` section.
+
+```bash
+# First run — seeds memory
+copilot-flow swarm start --spec spec.md --memory-namespace my-project
+
+# Second run — all agents start with remembered context
+copilot-flow swarm start --spec spec.md --memory-namespace my-project
+```
+
+See [plan-exec.md — Cross-run memory](plan-exec.md#cross-run-memory) for details on the
+distillation prompt and `.github/memory-prompt.md` customisation.
 
 ### Topologies
 

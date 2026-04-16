@@ -21,6 +21,8 @@ export { runSwarm } from './swarm/coordinator.js';
 
 // Memory
 export { MemoryStore, getMemoryStore } from './memory/store.js';
+export { distillToMemory } from './memory/distill.js';
+export { buildMemoryContext } from './memory/inject.js';
 
 // Hooks
 export { globalHooks, HookRegistry } from './hooks/registry.js';

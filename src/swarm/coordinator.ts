@@ -6,6 +6,8 @@
 import { runAgentTask } from '../agents/executor.js';
 import { hooks } from '../hooks/executor.js';
 import { getMemoryStore } from '../memory/store.js';
+import { distillToMemory } from '../memory/distill.js';
+import { buildMemoryContext } from '../memory/inject.js';
 import { output, agentBadge, generateAgentName } from '../output.js';
 import type { SwarmTask, SwarmTopology, AgentResult } from '../types.js';
 
@@ -81,9 +83,10 @@ async function runSequential(
   options: SwarmOptions
 ): Promise<void> {
   const mem = getMemoryStore();
+  const memCtx = options.memoryNamespace ? buildMemoryContext(options.memoryNamespace) : '';
   for (const task of tasks) {
     output.info(`${agentBadge(task.agentType)} ${task.id} — ${taskDescription(task)}`);
-    const result = await runAgentTask(task.agentType, buildPrompt(task, results, mem, ns), {
+    const result = await runAgentTask(task.agentType, memCtx + buildPrompt(task, results, mem, ns), {
       retryConfig: task.retryConfig,
       ...task.sessionOptions,
       label: agentLabel(task),
@@ -94,6 +97,10 @@ async function runSequential(
     results.set(task.id, result);
     if (result.success) {
       mem.store(ns, `task:${task.id}:result`, result.output, { ttlMs: 60 * 60 * 1000 });
+      if (options.memoryNamespace) {
+        const model = task.sessionOptions?.model ?? '';
+        await distillToMemory(result.output, options.memoryNamespace, `task:${task.id}`, model);
+      }
     }
   }
 }
@@ -109,6 +116,7 @@ async function runHierarchical(
   options: SwarmOptions
 ): Promise<void> {
   const mem = getMemoryStore();
+  const memCtx = options.memoryNamespace ? buildMemoryContext(options.memoryNamespace) : '';
   const remaining = [...tasks];
 
   while (remaining.length > 0) {
@@ -134,7 +142,7 @@ async function runHierarchical(
 
     const waveResults = await Promise.all(
       ready.map(task =>
-        runAgentTask(task.agentType, buildPrompt(task, results, mem, ns), {
+        runAgentTask(task.agentType, memCtx + buildPrompt(task, results, mem, ns), {
           retryConfig: task.retryConfig,
           ...task.sessionOptions,
           label: agentLabel(task),
@@ -150,6 +158,10 @@ async function runHierarchical(
       remaining.splice(remaining.indexOf(task), 1);
       if (result.success) {
         mem.store(ns, `task:${task.id}:result`, result.output, { ttlMs: 60 * 60 * 1000 });
+        if (options.memoryNamespace) {
+          const model = task.sessionOptions?.model ?? '';
+          await distillToMemory(result.output, options.memoryNamespace, `task:${task.id}`, model);
+        }
       }
     }
   }
@@ -163,13 +175,14 @@ async function runMesh(
   options: SwarmOptions
 ): Promise<void> {
   const mem = getMemoryStore();
+  const memCtx = options.memoryNamespace ? buildMemoryContext(options.memoryNamespace) : '';
   output.info(`Running all ${tasks.length} tasks concurrently (mesh):`);
   for (const t of tasks) {
     output.dim(`  ${agentBadge(t.agentType)} ${t.id} — ${taskDescription(t)}`);
   }
   const settled = await Promise.allSettled(
     tasks.map(task =>
-      runAgentTask(task.agentType, buildPrompt(task, results, mem, ns), {
+      runAgentTask(task.agentType, memCtx + buildPrompt(task, results, mem, ns), {
         retryConfig: task.retryConfig,
         ...task.sessionOptions,
         label: agentLabel(task),
@@ -186,6 +199,10 @@ async function runMesh(
       results.set(task.id, result);
       if (result.success) {
         mem.store(ns, `task:${task.id}:result`, result.output, { ttlMs: 60 * 60 * 1000 });
+        if (options.memoryNamespace) {
+          const model = task.sessionOptions?.model ?? '';
+          await distillToMemory(result.output, options.memoryNamespace, `task:${task.id}`, model);
+        }
       }
     }
   }

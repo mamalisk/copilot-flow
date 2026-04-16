@@ -207,6 +207,52 @@ list as part of the YAML output. You can also write `subTasks` by hand for full 
 - Use `topology: mesh` for truly independent parallel work; use `hierarchical` when
   agents should run sequentially and each agent's output feeds the next.
 
+### Cross-run memory
+
+Pass `--memory-namespace <name>` to persist knowledge across runs of the same plan.
+
+**What happens on each run:**
+
+1. Before each phase prompt is built, copilot-flow retrieves all facts stored under the
+   namespace and injects them as a `## Remembered context` section.
+2. After each phase completes successfully, a lightweight follow-up LLM call distils
+   the output into up to 10 compact `{key, value, tags}` facts and stores them in the
+   SQLite memory store with a 30-day TTL.
+
+```
+First run:  research phase runs → facts extracted → stored in SQLite
+Second run: "## Remembered context" prepended → research phase has prior knowledge
+```
+
+**Example:**
+
+```bash
+# First run — seeds memory
+copilot-flow exec phases.yaml --memory-namespace my-project
+
+# Second run — phases start with remembered context from the first
+copilot-flow exec phases.yaml --memory-namespace my-project
+```
+
+**Custom distillation prompt:**
+
+By default, copilot-flow uses a built-in extraction prompt. To tailor what gets
+remembered for your project, create `.github/memory-prompt.md`:
+
+```
+Extract only API contracts and data-model decisions as {key, value, tags} JSON.
+Tags must be one of: api | model | decision.
+Output ONLY a JSON array — no surrounding text.
+```
+
+The file is loaded automatically whenever `--memory-namespace` is active.
+
+**Inspect stored memories:**
+
+```bash
+copilot-flow memory list --namespace my-project
+```
+
 ### Options
 
 | Flag | Default | Description |
@@ -221,6 +267,7 @@ list as part of the YAML output. You can also write `subTasks` by hand for full 
 | `--skill-dir <path>` | `.github/skills` | Extra directory to scan for `SKILL.md` files (repeatable; adds to default) |
 | `--instructions <file>` | auto-detect | Repo instructions file to inject into every agent session |
 | `--no-instructions` | — | Disable auto-detection of `copilot-instructions.md` |
+| `--memory-namespace <ns>` | — | Enable cross-run memory under this namespace (see [Cross-run memory](#cross-run-memory)) |
 
 ### Custom agents and skills
 

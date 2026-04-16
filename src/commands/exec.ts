@@ -9,6 +9,8 @@ import { runSwarm } from '../swarm/coordinator.js';
 import { output, agentBadge, generateAgentName } from '../output.js';
 import { loadConfig } from '../config.js';
 import { clientManager } from '../core/client-manager.js';
+import { distillToMemory } from '../memory/distill.js';
+import { buildMemoryContext } from '../memory/inject.js';
 import type { Plan, PlanPhase, SwarmTask, AgentType, CopilotFlowConfig } from '../types.js';
 import type { CustomAgentConfig } from '@github/copilot-sdk';
 
@@ -162,6 +164,7 @@ interface SessionExts {
   customAgents: CustomAgentConfig[];
   skillDirs: string[];
   instructionsContent: string | undefined;
+  memoryNamespace: string | undefined;
 }
 
 /**
@@ -213,8 +216,14 @@ async function runPhase(
   let attempt = 0;
   let phaseOutput = '';
 
+  // Inject memories from prior runs (prepended once — not inside the retry loop)
+  const memoryContext = sessionExts.memoryNamespace
+    ? buildMemoryContext(sessionExts.memoryNamespace)
+    : '';
+
   while (attempt <= maxRetries) {
-    const prompt = buildPhasePrompt(phase, plan, phaseResults, planDir);
+    const basePrompt = buildPhasePrompt(phase, plan, phaseResults, planDir);
+    const prompt = memoryContext + basePrompt;
 
     // ── Run the phase (agent or swarm) ──────────────────────────────────────
     if (phase.type === 'swarm') {
@@ -227,7 +236,7 @@ async function runPhase(
         id: `${phase.id}-task-${i + 1}`,
         agentType,
         label: `${phase.id} — step ${i + 1}: ${agentType}`,
-        prompt: buildPhasePrompt(phase, plan, phaseResults, planDir, phase.subTasks?.[i]),
+        prompt: memoryContext + buildPhasePrompt(phase, plan, phaseResults, planDir, phase.subTasks?.[i]),
         dependsOn: topology === 'mesh' ? undefined : i > 0 ? [`${phase.id}-task-${i}`] : undefined,
         sessionOptions: {
           model: resolveModel(agentType, phase, cliModel, config),
@@ -305,6 +314,14 @@ async function runPhase(
   }
 
   writeFileSync(outFile, `# Phase: ${phase.id}\n\n${phaseOutput}\n`, 'utf-8');
+
+  // Distil key facts into memory (best-effort, fires after phase is written to disk)
+  if (sessionExts.memoryNamespace) {
+    const distilModel = resolveModel(phase.agentType ?? 'analyst', phase, cliModel, config);
+    output.dim(`  [${phase.id}] Distilling to memory (namespace: ${sessionExts.memoryNamespace})…`);
+    await distillToMemory(phaseOutput, sessionExts.memoryNamespace, `phase:${phase.id}`, distilModel);
+  }
+
   return { id: phase.id, output: phaseOutput, outFile, skipped: false };
 }
 
@@ -326,6 +343,7 @@ export function registerExec(program: Command): void {
       (val, prev: string[]) => [...prev, val], [] as string[])
     .option('--instructions <file>', 'Repo instructions file to inject (default: auto-detects .github/copilot-instructions.md)')
     .option('--no-instructions', 'Disable auto-detection of copilot-instructions.md')
+    .option('--memory-namespace <ns>', 'Enable cross-run memory: distil phase outputs and inject prior context under this namespace')
     .action(async (planFile: string, opts: {
       phase?: string;
       force: boolean;
@@ -337,6 +355,7 @@ export function registerExec(program: Command): void {
       skillDir: string[];
       instructions?: string;
       noInstructions?: boolean;
+      memoryNamespace?: string;
     }) => {
       if (!existsSync(planFile)) {
         output.error(`Plan file not found: ${planFile}`);
@@ -376,6 +395,7 @@ export function registerExec(program: Command): void {
           config.instructions.file,
           config.instructions.autoLoad,
         ),
+        memoryNamespace: opts.memoryNamespace,
       };
 
       // ── Single-phase path ────────────────────────────────────────────────

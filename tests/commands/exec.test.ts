@@ -26,6 +26,8 @@ vi.mock('../../src/swarm/coordinator.js',  () => ({ runSwarm: mockRunSwarm }));
 vi.mock('../../src/core/client-manager.js', () => ({
   clientManager: { getClient: vi.fn(), shutdown: mockShutdown },
 }));
+vi.mock('../../src/memory/distill.js',  () => ({ distillToMemory: vi.fn().mockResolvedValue(undefined) }));
+vi.mock('../../src/memory/inject.js',   () => ({ buildMemoryContext: vi.fn().mockReturnValue('') }));
 
 const mockLoadConfig = vi.fn().mockReturnValue({
   defaultModel: '',
