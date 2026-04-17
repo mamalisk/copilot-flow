@@ -302,4 +302,52 @@ describe('MemoryStore', () => {
     store.store('ns', 'key', 'value', { importance: 4 });
     expect(store.search('ns', 'value')[0].importance).toBe(4);
   });
+
+  // ── Tag filtering ─────────────────────────────────────────────────────────
+
+  it('list() with filterTags returns only entries with a matching tag', () => {
+    store.store('ns', 'arch', 'v', { tags: ['architecture'] });
+    store.store('ns', 'cfg',  'v', { tags: ['config'] });
+    store.store('ns', 'dec',  'v', { tags: ['decision'] });
+    const keys = store.list('ns', ['architecture', 'decision']).map(e => e.key).sort();
+    expect(keys).toEqual(['arch', 'dec']);
+  });
+
+  it('list() with filterTags excludes entries with no matching tag', () => {
+    store.store('ns', 'match',   'v', { tags: ['code'] });
+    store.store('ns', 'no-match','v', { tags: ['config'] });
+    expect(store.list('ns', ['code'])).toHaveLength(1);
+    expect(store.list('ns', ['code'])[0].key).toBe('match');
+  });
+
+  it('list() without filterTags returns all entries (backward compat)', () => {
+    store.store('ns', 'a', 'v', { tags: ['code'] });
+    store.store('ns', 'b', 'v', { tags: ['config'] });
+    expect(store.list('ns')).toHaveLength(2);
+  });
+
+  it('list() with empty filterTags array returns all entries', () => {
+    store.store('ns', 'a', 'v', { tags: ['code'] });
+    store.store('ns', 'b', 'v', { tags: ['config'] });
+    expect(store.list('ns', [])).toHaveLength(2);
+  });
+
+  it('list() filterTags matches entry with multiple tags when any tag matches', () => {
+    store.store('ns', 'multi', 'v', { tags: ['decision', 'architecture'] });
+    expect(store.list('ns', ['architecture'])).toHaveLength(1);
+  });
+
+  it('search() with filterTags returns only entries with a matching tag', () => {
+    store.store('ns', 'code-fact', 'val', { tags: ['code'] });
+    store.store('ns', 'api-fact',  'val', { tags: ['api'] });
+    const results = store.search('ns', 'val', 20, ['code']);
+    expect(results).toHaveLength(1);
+    expect(results[0].key).toBe('code-fact');
+  });
+
+  it('search() without filterTags returns all matching entries', () => {
+    store.store('ns', 'a', 'val', { tags: ['code'] });
+    store.store('ns', 'b', 'val', { tags: ['api'] });
+    expect(store.search('ns', 'val')).toHaveLength(2);
+  });
 });

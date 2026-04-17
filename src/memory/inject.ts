@@ -16,12 +16,14 @@ const MAX_ENTRIES = 50;
 /**
  * Build a formatted memory context section for injection into a prompt.
  *
- * @param namespace  The memory namespace to read from.
+ * @param namespace   The memory namespace to read from.
+ * @param filterTags  When provided, only facts whose tags share at least one
+ *                    element with this list are included. Omit for all facts.
  * @returns A markdown section string, or empty string if no memories exist.
  */
-export function buildMemoryContext(namespace: string): string {
+export function buildMemoryContext(namespace: string, filterTags?: string[]): string {
   const store = getMemoryStore();
-  const entries = store.list(namespace).slice(0, MAX_ENTRIES);
+  const entries = store.list(namespace, filterTags).slice(0, MAX_ENTRIES);
   if (entries.length === 0) return '';
 
   const lines = entries.map(e => {

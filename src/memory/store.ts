@@ -109,9 +109,20 @@ export class MemoryStore {
    * Search entries in a namespace by substring match on key or value.
    * Results are ordered by importance DESC, then created_at DESC.
    * Returns up to `limit` results (default 20).
+   *
+   * @param filterTags  When provided, only entries whose tags array shares at
+   *                    least one element with this list are returned.
    */
-  search(namespace: string, query: string, limit = 20): MemoryEntry[] {
+  search(namespace: string, query: string, limit = 20, filterTags?: string[]): MemoryEntry[] {
     const like = `%${query}%`;
+    const hasTags = filterTags != null && filterTags.length > 0;
+    const tagClause = hasTags
+      ? `AND EXISTS (SELECT 1 FROM json_each(tags) AS t JOIN json_each(?) AS f ON t.value = f.value)`
+      : '';
+    const params: (string | number)[] = [namespace, like, like, Date.now()];
+    if (hasTags) params.push(JSON.stringify(filterTags));
+    params.push(limit);
+
     const rows = this.db
       .prepare(
         `SELECT id, namespace, key, value, tags, importance, created_at, expires_at
@@ -119,10 +130,11 @@ export class MemoryStore {
          WHERE namespace = ?
            AND (key LIKE ? OR value LIKE ?)
            AND (expires_at IS NULL OR expires_at > ?)
+           ${tagClause}
          ORDER BY importance DESC, created_at DESC
          LIMIT ?`
       )
-      .all(namespace, like, like, Date.now(), limit) as Array<{
+      .all(...params) as Array<{
         id: string;
         namespace: string;
         key: string;
@@ -149,16 +161,27 @@ export class MemoryStore {
    * List all non-expired entries in a namespace.
    * Results are ordered by importance DESC, then created_at DESC so that
    * higher-priority facts are injected first when building prompt context.
+   *
+   * @param filterTags  When provided, only entries whose tags array shares at
+   *                    least one element with this list are returned.
    */
-  list(namespace: string): MemoryEntry[] {
+  list(namespace: string, filterTags?: string[]): MemoryEntry[] {
+    const hasTags = filterTags != null && filterTags.length > 0;
+    const tagClause = hasTags
+      ? `AND EXISTS (SELECT 1 FROM json_each(tags) AS t JOIN json_each(?) AS f ON t.value = f.value)`
+      : '';
+    const params: (string | number)[] = [namespace, Date.now()];
+    if (hasTags) params.push(JSON.stringify(filterTags));
+
     const rows = this.db
       .prepare(
         `SELECT id, namespace, key, value, tags, importance, created_at, expires_at
          FROM entries
          WHERE namespace = ? AND (expires_at IS NULL OR expires_at > ?)
+         ${tagClause}
          ORDER BY importance DESC, created_at DESC`
       )
-      .all(namespace, Date.now()) as Array<{
+      .all(...params) as Array<{
         id: string;
         namespace: string;
         key: string;

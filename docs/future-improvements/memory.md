@@ -52,26 +52,26 @@ under the same keys rather than creating new rows.
 
 ---
 
-## 3. Tag filtering in prompt injection
+## ✅ 3. Tag filtering in prompt injection
 
-**Current behaviour**: `buildMemoryContext(namespace)` returns all facts in a namespace
-regardless of their tags. A `coder` phase gets the same memory block as a `researcher`
-phase — decisions, configs, API notes, and architecture facts all injected together.
+> **Implemented** — `buildMemoryContext(namespace, filterTags?)` accepts an optional tag
+> filter. `list()` and `search()` gained a matching `filterTags?` parameter backed by a
+> `json_each()` SQL intersection check. `PlanPhase` gained `contextTags?: string[]`; when
+> set, `exec.ts` passes it to `buildMemoryContext` so each phase receives only its relevant
+> memory slice. Omitting `contextTags` preserves the existing all-facts behaviour.
 
-**Problem**: context pollution. A phase receives many irrelevant facts and may
-have fewer tokens left for the facts that actually matter to its job.
+~~**Current behaviour**: `buildMemoryContext(namespace)` returns all facts in a namespace~~
+~~regardless of their tags.~~
 
-**Inspiration**: mempalace wing/room taxonomy — L2 retrieval accepts `wing` and `room`
-filters. Only the relevant slice of memory is loaded, not the whole namespace.
-
-**Proposal**:
-- Add an optional `tags?: string[]` parameter to `buildMemoryContext`
-- When tags are provided, add a `WHERE json_each(tags) IN (...)` filter to the `list()` query
-- In `exec.ts`, pass the current phase's `agentType` and any phase-level `contextTags`
-  (a new optional YAML field) to `buildMemoryContext` so each phase receives only its
-  relevant slice
-
-Tags are already stored in SQLite — this is entirely a read-path change.
+**What changed**:
+- `list(namespace, filterTags?)` and `search(namespace, query, limit, filterTags?)` — SQL
+  intersection via `json_each()`: entries are included only when their tags array shares at
+  least one element with `filterTags`
+- `buildMemoryContext(namespace, filterTags?)` — passes the filter down to `store.list()`
+- `PlanPhase.contextTags?: string[]` — new optional YAML field; when present, used as the
+  `filterTags` argument in `exec.ts`
+- 7 new tests cover filtering, backward compat (no filter = all entries), empty filter,
+  multi-tag entries, and `search()` tag filtering
 
 ---
 
@@ -195,7 +195,7 @@ copilot-flow memory identity   # (new subcommand, analogous to `memory prime`)
 |---|------|--------|--------|-----------|--------|
 | 1 | Upsert dedup | XS | High | — | ✅ Done |
 | 2 | Importance scoring | S | High | — | ✅ Done |
-| 3 | Tag filtering in injection | S | Medium | — | Pending |
+| 3 | Tag filtering in injection | S | Medium | — | ✅ Done |
 | 4 | Move pruning off read path | XS | Medium | — | ✅ Done |
 | 5 | BM25 search | M | Medium | — | Pending |
 | 6 | Layered injection | M | High | #2 | Pending |

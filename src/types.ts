@@ -267,6 +267,18 @@ export interface PlanPhase {
    * Merged with config.skills.directories and the CLI --skill-dir list.
    */
   skillDirectories?: string[];
+  /**
+   * Memory tag filter for this phase. When set and `--memory-namespace` is
+   * active, only facts whose tags share at least one element with this list
+   * are injected into the prompt. Omit to receive all facts in the namespace.
+   *
+   * Uses the same tag vocabulary as `memory store --tags`:
+   * decision | constraint | requirement | architecture | code | api | config
+   *
+   * Example: a coder phase that should only see code and architecture facts:
+   *   contextTags: [code, architecture]
+   */
+  contextTags?: string[];
 }
 
 export interface Plan {

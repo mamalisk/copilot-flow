@@ -216,9 +216,10 @@ async function runPhase(
   let attempt = 0;
   let phaseOutput = '';
 
-  // Inject memories from prior runs (prepended once — not inside the retry loop)
+  // Inject memories from prior runs (prepended once — not inside the retry loop).
+  // contextTags narrows the injected facts to those matching the phase's tag filter.
   const memoryContext = sessionExts.memoryNamespace
-    ? buildMemoryContext(sessionExts.memoryNamespace)
+    ? buildMemoryContext(sessionExts.memoryNamespace, phase.contextTags)
     : '';
 
   while (attempt <= maxRetries) {

@@ -99,6 +99,33 @@ copilot-flow exec phases.yaml --memory-namespace my-project
 copilot-flow memory list --namespace my-project
 ```
 
+### Per-phase tag filtering (`contextTags`)
+
+By default every phase sees **all** facts in the namespace. Setting `contextTags` on a
+phase restricts injection to facts whose tags share at least one element with the list —
+reducing context noise for specialised phases.
+
+```yaml
+phases:
+  - id: coder
+    type: agent
+    agentType: coder
+    description: Implement the feature
+    contextTags: [code, architecture]   # only code and architecture facts injected
+
+  - id: researcher
+    type: agent
+    agentType: researcher
+    description: Research the problem
+    contextTags: [requirement, decision] # only requirements and decisions
+```
+
+Tag vocabulary: `decision | constraint | requirement | architecture | code | api | config`
+
+Omit `contextTags` (or leave it empty) to receive all facts — the previous default behaviour.
+
+---
+
 ### Customising the distillation prompt
 
 By default the built-in prompt asks for facts tagged as `decision | constraint |
