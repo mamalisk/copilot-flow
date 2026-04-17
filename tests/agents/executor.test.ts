@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import fs from 'fs';
 import { runAgentTask } from '../../src/agents/executor.js';
 
 // ── Mock @github/copilot-sdk ────────────────────────────────────────────────
@@ -147,6 +148,31 @@ describe('runAgentTask', () => {
 
     expect(result.success).toBe(false);
     expect(result.error).toContain('ECONNRESET');
+  });
+
+  it('uses .github/agents/<type>.md as system message when the file exists', async () => {
+    vi.spyOn(fs, 'existsSync').mockReturnValue(true);
+    vi.spyOn(fs, 'readFileSync').mockImplementation(() => 'Custom coder system prompt');
+
+    await runAgentTask('coder', 'Test task');
+
+    expect(mockCreateSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        systemMessage: expect.objectContaining({ content: 'Custom coder system prompt' }),
+      })
+    );
+  });
+
+  it('falls back to registry system message when .github/agents/<type>.md is absent', async () => {
+    vi.spyOn(fs, 'existsSync').mockReturnValue(false);
+
+    await runAgentTask('coder', 'Test task');
+
+    expect(mockCreateSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        systemMessage: expect.objectContaining({ content: expect.stringContaining('expert software engineer') }),
+      })
+    );
   });
 
   it('calls onChunk for each delta', async () => {

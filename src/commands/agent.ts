@@ -9,7 +9,7 @@ import { output, agentBadge, printTable, setLogLevel, withSpinner } from '../out
 import { loadConfig } from '../config.js';
 import { clientManager } from '../core/client-manager.js';
 import { distillToMemory } from '../memory/distill.js';
-import { buildMemoryContext } from '../memory/inject.js';
+import { buildMemoryContext, loadIdentityContent } from '../memory/inject.js';
 import type { AgentType } from '../types.js';
 import type { BackoffStrategy } from '../core/retry.js';
 import type { CustomAgentConfig } from '@github/copilot-sdk';
@@ -137,7 +137,7 @@ export function registerAgent(program: Command): void {
       if (opts.verbose) setLogLevel('debug');
 
       // Prepend cross-run memory context if a namespace was provided
-      const memoryContext = opts.memoryNamespace ? buildMemoryContext(opts.memoryNamespace) : '';
+      const memoryContext = opts.memoryNamespace ? buildMemoryContext(opts.memoryNamespace, undefined, undefined, loadIdentityContent()) : '';
       const taskWithMemory = memoryContext + task;
 
       output.info(`${agentBadge(agentType)} Running: ${task.slice(0, 80)}`);

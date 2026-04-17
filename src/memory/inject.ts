@@ -12,10 +12,32 @@
  * Both caps use character counts as a token proxy (1 token ≈ 4 chars).
  * Returns an empty string when no memories exist so callers can prepend
  * the result unconditionally.
+ *
+ * Project identity block:
+ *   If .github/memory-identity.md exists in cwd, its content is prepended as
+ *   a stable "## Project identity" section before the dynamic facts block.
+ *   Use loadIdentityContent() and pass the result as identityContent to
+ *   buildMemoryContext — this keeps the function pure and testable.
  */
 
+import { existsSync, readFileSync } from 'fs';
+import path from 'path';
 import type { MemoryEntry } from '../types.js';
 import { getMemoryStore, MemoryStore } from './store.js';
+
+/** Path to the project identity file, relative to cwd. */
+export const IDENTITY_FILE = '.github/memory-identity.md';
+
+/**
+ * Read the project identity file (.github/memory-identity.md) from cwd.
+ * Returns trimmed content, or an empty string if the file does not exist.
+ * Pass the result as `identityContent` to buildMemoryContext.
+ */
+export function loadIdentityContent(cwd = process.cwd()): string {
+  const filePath = path.join(cwd, IDENTITY_FILE);
+  if (!existsSync(filePath)) return '';
+  return readFileSync(filePath, 'utf-8').trim();
+}
 
 /** Wake-up tier hard cap in characters (~800 tokens). */
 export const WAKE_UP_CHAR_CAP = 3_200;
@@ -31,17 +53,20 @@ function formatEntry(e: MemoryEntry): string {
 /**
  * Build a formatted memory context section for injection into a prompt.
  *
- * @param namespace   The memory namespace to read from.
- * @param filterTags  When provided, a second tag-filtered tier is appended after
- *                    the wake-up block, deduped, within the combined char cap.
- * @param store       Memory store instance (defaults to the process-wide singleton).
- *                    Pass an explicit instance in tests to avoid the singleton.
- * @returns A markdown section string, or empty string if no memories exist.
+ * @param namespace       The memory namespace to read from.
+ * @param filterTags      When provided, a second tag-filtered tier is appended after
+ *                        the wake-up block, deduped, within the combined char cap.
+ * @param store           Memory store instance (defaults to the process-wide singleton).
+ *                        Pass an explicit instance in tests to avoid the singleton.
+ * @param identityContent Content of .github/memory-identity.md (call loadIdentityContent()).
+ *                        When non-empty, prepended as "## Project identity" before facts.
+ * @returns A markdown section string, or empty string if no content exists.
  */
 export function buildMemoryContext(
   namespace: string,
   filterTags?: string[],
   store?: MemoryStore,
+  identityContent?: string,
 ): string {
   const s = store ?? getMemoryStore();
 
@@ -81,7 +106,15 @@ export function buildMemoryContext(
   }
 
   const allLines = [...wakeUpLines, ...topicLines];
-  if (allLines.length === 0) return '';
 
-  return `## Remembered context\n${allLines.join('\n')}\n\n`;
+  const sections: string[] = [];
+  if (identityContent) {
+    sections.push(`## Project identity\n${identityContent}`);
+  }
+  if (allLines.length > 0) {
+    sections.push(`## Remembered context\n${allLines.join('\n')}`);
+  }
+
+  if (sections.length === 0) return '';
+  return sections.join('\n\n') + '\n\n';
 }

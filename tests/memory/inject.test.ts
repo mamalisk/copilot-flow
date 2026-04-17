@@ -127,6 +127,41 @@ describe('buildMemoryContext — layered injection', () => {
     expect(buildMemoryContext('ns-b', undefined, store)).not.toContain('only-a');
   });
 
+  // ── Project identity block ────────────────────────────────────────────────
+
+  it('prepends the identity block before remembered context', () => {
+    store.store('ns', 'key', 'value');
+    const ctx = buildMemoryContext('ns', undefined, store, 'Stack: Next.js 14, Prisma');
+    expect(ctx.indexOf('## Project identity')).toBeLessThan(ctx.indexOf('## Remembered context'));
+    expect(ctx).toContain('Stack: Next.js 14, Prisma');
+  });
+
+  it('returns identity block even when namespace is empty', () => {
+    const ctx = buildMemoryContext('ns', undefined, store, 'My project description');
+    expect(ctx).toContain('## Project identity');
+    expect(ctx).toContain('My project description');
+  });
+
+  it('returns empty string when identity is absent and namespace is empty', () => {
+    expect(buildMemoryContext('ns', undefined, store, '')).toBe('');
+    expect(buildMemoryContext('ns', undefined, store, undefined)).toBe('');
+  });
+
+  it('identity block is omitted when identityContent is empty string', () => {
+    store.store('ns', 'key', 'value');
+    const ctx = buildMemoryContext('ns', undefined, store, '');
+    expect(ctx).not.toContain('## Project identity');
+    expect(ctx).toContain('## Remembered context');
+  });
+
+  it('output ends with double newline regardless of which sections are present', () => {
+    const withBoth = buildMemoryContext('ns', undefined, store, 'identity');
+    store.store('ns', 'k', 'v');
+    const withBothFull = buildMemoryContext('ns', undefined, store, 'identity');
+    expect(withBoth).toMatch(/\n\n$/);
+    expect(withBothFull).toMatch(/\n\n$/);
+  });
+
   // ── Memory types ──────────────────────────────────────────────────────────
 
   it('workflow-state entries are excluded from prompt injection', () => {

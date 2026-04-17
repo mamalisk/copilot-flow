@@ -3,6 +3,8 @@
  * wrapping everything with retry logic and streaming support.
  */
 
+import fs from 'fs';
+import path from 'path';
 import { approveAll } from '@github/copilot-sdk';
 import type { CustomAgentConfig } from '@github/copilot-sdk';
 import { clientManager } from '../core/client-manager.js';
@@ -63,6 +65,15 @@ export async function runAgentTask(
   options: RunTaskOptions = {}
 ): Promise<AgentResult> {
   const def = getAgentDefinition(agentType);
+
+  // Check for a project-local system prompt override in .github/agents/<type>.md.
+  // When the file exists its trimmed content replaces the registry default so teams
+  // can tailor agent behaviour without touching the package source.
+  const customPromptPath = path.join(process.cwd(), '.github', 'agents', `${agentType}.md`);
+  const systemMessage = fs.existsSync(customPromptPath)
+    ? fs.readFileSync(customPromptPath, 'utf-8').trim()
+    : def.systemMessage;
+
   // Use explicitly passed model, then agent registry default, then config default.
   // Empty string means "let the Copilot CLI choose" — omitted from createSession entirely.
   const model = options.model || def.model || '';
@@ -99,7 +110,7 @@ export async function runAgentTask(
           systemMessage: options.instructionsContent
             ? {
                 mode: 'customize' as const,
-                content: def.systemMessage,
+                content: systemMessage,
                 sections: {
                   custom_instructions: {
                     action: 'append' as const,
@@ -107,7 +118,7 @@ export async function runAgentTask(
                   },
                 } as Record<string, { action: 'append' | 'replace' | 'remove'; content?: string }>,
               }
-            : { content: def.systemMessage },
+            : { content: systemMessage },
 
           // Skills
           ...(options.skillDirectories?.length && { skillDirectories: options.skillDirectories }),

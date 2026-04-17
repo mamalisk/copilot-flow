@@ -148,12 +148,15 @@ export function registerMemory(program: Command): void {
       output.success(`Cleared ${count} entries from: ${opts.namespace}`);
     });
 
-  // ── memory prime ───────────────────────────────────────────────────────────
+  // ── memory prime (deprecated) ──────────────────────────────────────────────
   memory
     .command('prime')
-    .description('Create .github/memory-prompt.md with the default distillation prompt')
+    .description('[DEPRECATED] Use "copilot-flow init" instead, which creates this file automatically')
     .option('--force', 'Overwrite if the file already exists')
     .action((opts: { force?: boolean }) => {
+      output.warn('memory prime is deprecated — run "copilot-flow init" instead.');
+      output.dim('  copilot-flow init creates .github/memory-prompt.md, .github/memory-identity.md,');
+      output.dim('  and agent prompt files in .github/agents/ automatically.');
       if (existsSync(MEMORY_PROMPT_FILE) && !opts.force) {
         output.warn(`${MEMORY_PROMPT_FILE} already exists. Use --force to overwrite.`);
         return;

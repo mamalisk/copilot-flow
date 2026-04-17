@@ -7,7 +7,7 @@ import { runAgentTask } from '../agents/executor.js';
 import { hooks } from '../hooks/executor.js';
 import { getMemoryStore } from '../memory/store.js';
 import { distillToMemory } from '../memory/distill.js';
-import { buildMemoryContext } from '../memory/inject.js';
+import { buildMemoryContext, loadIdentityContent } from '../memory/inject.js';
 import { output, agentBadge, generateAgentName } from '../output.js';
 import type { SwarmTask, SwarmTopology, AgentResult } from '../types.js';
 
@@ -83,7 +83,8 @@ async function runSequential(
   options: SwarmOptions
 ): Promise<void> {
   const mem = getMemoryStore();
-  const memCtx = options.memoryNamespace ? buildMemoryContext(options.memoryNamespace) : '';
+  const identity = options.memoryNamespace ? loadIdentityContent() : '';
+  const memCtx = options.memoryNamespace ? buildMemoryContext(options.memoryNamespace, undefined, undefined, identity) : '';
   for (const task of tasks) {
     output.info(`${agentBadge(task.agentType)} ${task.id} — ${taskDescription(task)}`);
     const result = await runAgentTask(task.agentType, memCtx + buildPrompt(task, results, mem, ns), {
@@ -116,7 +117,8 @@ async function runHierarchical(
   options: SwarmOptions
 ): Promise<void> {
   const mem = getMemoryStore();
-  const memCtx = options.memoryNamespace ? buildMemoryContext(options.memoryNamespace) : '';
+  const identity = options.memoryNamespace ? loadIdentityContent() : '';
+  const memCtx = options.memoryNamespace ? buildMemoryContext(options.memoryNamespace, undefined, undefined, identity) : '';
   const remaining = [...tasks];
 
   while (remaining.length > 0) {
@@ -175,7 +177,8 @@ async function runMesh(
   options: SwarmOptions
 ): Promise<void> {
   const mem = getMemoryStore();
-  const memCtx = options.memoryNamespace ? buildMemoryContext(options.memoryNamespace) : '';
+  const identity = options.memoryNamespace ? loadIdentityContent() : '';
+  const memCtx = options.memoryNamespace ? buildMemoryContext(options.memoryNamespace, undefined, undefined, identity) : '';
   output.info(`Running all ${tasks.length} tasks concurrently (mesh):`);
   for (const t of tasks) {
     output.dim(`  ${agentBadge(t.agentType)} ${t.id} — ${taskDescription(t)}`);
