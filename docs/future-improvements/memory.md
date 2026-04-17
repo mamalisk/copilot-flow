@@ -135,24 +135,33 @@ A burst of 10 distilled facts stores at most one `DELETE` pass total.
 
 ---
 
-## 7. Memory types
+## ✅ 7. Memory types
 
-**Current behaviour**: all stored entries are untyped strings. The `contextKey` prefix
+> **Implemented** — `MemoryType = 'fact' | 'decision' | 'workflow-state' | 'context'` added
+> to `src/types.ts`. `MemoryEntry.type: MemoryType` (required) and `StoreOptions.type?: MemoryType`
+> (default `'fact'`). SQLite schema: `type TEXT NOT NULL DEFAULT 'fact'` column + `idx_type`
+> index; automatic `ALTER TABLE` migration for existing databases. `list()` and `search()` both
+> accept an optional `filterType?: MemoryType` parameter backed by `AND type = ?` in SQL.
+> `buildMemoryContext` skips `workflow-state` entries in both tiers (wake-up and topic).
+> CLI: `memory store --type`, `memory list --type`, `memory search --type`. 7 new tests in
+> `tests/memory/store.test.ts`; 2 new tests in `tests/memory/inject.test.ts`.
+
+~~**Current behaviour**: all stored entries are untyped strings. The `contextKey` prefix
 (`phase:research:...`, `task:task-2:...`) is a loose naming convention but carries no
-semantic meaning — there is no way to query "all decisions" or "all workflow state blobs".
+semantic meaning — there is no way to query "all decisions" or "all workflow state blobs".~~
 
-**Inspiration**: ruflo v3 `MemoryType` — `'task' | 'context' | 'event' | 'task-start' |
-'task-complete' | 'workflow-state'`. Typed memories enable targeted retrieval, agent
-isolation, and workflow state resumption.
-
-**Proposal**:
-- Add `type?: 'fact' | 'decision' | 'workflow-state' | 'context'` to `StoreOptions`
-  and `MemoryEntry`
-- Add a `type TEXT DEFAULT 'fact'` column to the SQLite schema
-- Update `memory list` CLI to accept `--type <type>` filter
-- In `buildMemoryContext`, skip `workflow-state` entries (they are blobs, not prose facts)
-- Reserve `workflow-state` for future swarm resumption: a crashed swarm can serialise its
-  partial results under a deterministic key and restore them on re-run
+**What changed**:
+- `MemoryType` type alias added to `src/types.ts`
+- `MemoryEntry.type: MemoryType` (non-optional, always present)
+- `StoreOptions.type?: MemoryType` (default `'fact'`); upsert refreshes the type column
+- SQLite: `type TEXT NOT NULL DEFAULT 'fact'` column + `CREATE INDEX idx_type`; `ALTER TABLE`
+  migration with try/catch for existing databases
+- `list(namespace, filterTags?, filterType?)` — `AND type = ?` clause appended when `filterType` is set
+- `search(namespace, query, limit, filterTags?, filterType?)` — same
+- `buildMemoryContext` skips `type === 'workflow-state'` in both tiers; these are serialised
+  blobs intended for swarm resumption, not prose facts for agents
+- CLI `memory store --type <type>`, `memory list --type <type>`, `memory search --type <type>`
+- `memory list` shows a `(type)` badge when type is non-default (i.e. not `'fact'`)
 
 ---
 
@@ -192,5 +201,5 @@ copilot-flow memory identity   # (new subcommand, analogous to `memory prime`)
 | 4 | Move pruning off read path | XS | Medium | — | ✅ Done |
 | 5 | BM25 search | M | Medium | — | ✅ Done |
 | 6 | Layered injection | M | High | #2 | ✅ Done |
-| 7 | Memory types | S | Medium | — | Pending |
+| 7 | Memory types | S | Medium | — | ✅ Done |
 | 8 | Project identity block | S | Medium | — | Pending |

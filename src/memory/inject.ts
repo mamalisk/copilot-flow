@@ -47,12 +47,14 @@ export function buildMemoryContext(
 
   // ── Tier 1: wake-up ────────────────────────────────────────────────────────
   // Always-injected facts, sorted importance DESC then created_at DESC.
-  // Fill up to WAKE_UP_CHAR_CAP chars.
+  // Fill up to WAKE_UP_CHAR_CAP chars. workflow-state entries are blobs and
+  // are excluded from prompt injection.
   const wakeUpLines: string[] = [];
   const wakeUpIds   = new Set<string>();
   let usedChars     = 0;
 
   for (const e of s.list(namespace)) {
+    if (e.type === 'workflow-state') continue; // blobs, not prose facts
     const line = formatEntry(e);
     const cost = line.length + 1; // +1 for the trailing newline
     if (usedChars + cost > WAKE_UP_CHAR_CAP) break;
@@ -63,12 +65,13 @@ export function buildMemoryContext(
 
   // ── Tier 2: topic ──────────────────────────────────────────────────────────
   // Tag-filtered facts not already in the wake-up block, appended up to
-  // TOTAL_CHAR_CAP chars total.
+  // TOTAL_CHAR_CAP chars total. workflow-state entries are excluded here too.
   const topicLines: string[] = [];
 
   if (filterTags != null && filterTags.length > 0) {
     for (const e of s.list(namespace, filterTags)) {
       if (wakeUpIds.has(e.id)) continue; // already in wake-up tier — skip
+      if (e.type === 'workflow-state') continue; // blobs, not prose facts
       const line = formatEntry(e);
       const cost = line.length + 1;
       if (usedChars + cost > TOTAL_CHAR_CAP) break;

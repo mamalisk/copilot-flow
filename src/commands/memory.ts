@@ -2,6 +2,7 @@ import { Command } from 'commander';
 import { mkdirSync, existsSync, writeFileSync } from 'fs';
 import { getMemoryStore } from '../memory/store.js';
 import { output, printTable } from '../output.js';
+import type { MemoryType } from '../types.js';
 
 const MEMORY_PROMPT_FILE = '.github/memory-prompt.md';
 
@@ -38,12 +39,14 @@ export function registerMemory(program: Command): void {
     .option('--ttl <ms>', 'Time-to-live in milliseconds (optional)')
     .option('--tags <tags>', 'Comma-separated tags')
     .option('--importance <n>', 'Importance score 1–5 (default 3; 5=critical, 1=trivial)')
-    .action((opts: { namespace: string; key: string; value: string; ttl?: string; tags?: string; importance?: string }) => {
+    .option('--type <type>', 'Memory type: fact | decision | workflow-state | context (default: fact)')
+    .action((opts: { namespace: string; key: string; value: string; ttl?: string; tags?: string; importance?: string; type?: string }) => {
       const store = getMemoryStore();
       store.store(opts.namespace, opts.key, opts.value, {
         ttlMs: opts.ttl != null ? parseInt(opts.ttl, 10) : undefined,
         tags: opts.tags?.split(',').map(t => t.trim()),
         importance: opts.importance != null ? parseInt(opts.importance, 10) : undefined,
+        type: opts.type as MemoryType | undefined,
       });
       output.success(`Stored: ${opts.namespace}/${opts.key}`);
     });
@@ -71,9 +74,10 @@ export function registerMemory(program: Command): void {
     .requiredOption('--namespace <ns>', 'Memory namespace')
     .requiredOption('--query <query>', 'Search query (substring match on key and value)')
     .option('--limit <n>', 'Max results', '20')
-    .action((opts: { namespace: string; query: string; limit: string }) => {
+    .option('--type <type>', 'Filter by type: fact | decision | workflow-state | context')
+    .action((opts: { namespace: string; query: string; limit: string; type?: string }) => {
       const store = getMemoryStore();
-      const results = store.search(opts.namespace, opts.query, parseInt(opts.limit, 10));
+      const results = store.search(opts.namespace, opts.query, parseInt(opts.limit, 10), undefined, opts.type as MemoryType | undefined);
 
       if (results.length === 0) {
         output.dim('No results found.');
@@ -86,6 +90,7 @@ export function registerMemory(program: Command): void {
           ['Key', entry.key],
           ['Value', entry.value.slice(0, 100) + (entry.value.length > 100 ? '…' : '')],
           ['Tags', entry.tags.join(', ') || '—'],
+          ['Type', entry.type],
           ['Importance', String(entry.importance)],
           ['Created', new Date(entry.createdAt).toISOString()],
         ]);
@@ -98,9 +103,10 @@ export function registerMemory(program: Command): void {
     .command('list')
     .description('List all entries in a namespace')
     .requiredOption('--namespace <ns>', 'Memory namespace')
-    .action((opts: { namespace: string }) => {
+    .option('--type <type>', 'Filter by type: fact | decision | workflow-state | context')
+    .action((opts: { namespace: string; type?: string }) => {
       const store = getMemoryStore();
-      const entries = store.list(opts.namespace);
+      const entries = store.list(opts.namespace, undefined, opts.type as MemoryType | undefined);
 
       if (entries.length === 0) {
         output.dim(`No entries in namespace: ${opts.namespace}`);
@@ -109,8 +115,9 @@ export function registerMemory(program: Command): void {
 
       output.header(`Memory: ${opts.namespace} (${entries.length} entries)`);
       for (const entry of entries) {
-        const badge = entry.importance !== 3 ? ` [${entry.importance}]` : '';
-        output.print(`  ${entry.key}${badge}: ${entry.value.slice(0, 60)}${entry.value.length > 60 ? '…' : ''}`);
+        const importanceBadge = entry.importance !== 3 ? ` [${entry.importance}]` : '';
+        const typeBadge = entry.type !== 'fact' ? ` (${entry.type})` : '';
+        output.print(`  ${entry.key}${importanceBadge}${typeBadge}: ${entry.value.slice(0, 60)}${entry.value.length > 60 ? '…' : ''}`);
       }
     });
 

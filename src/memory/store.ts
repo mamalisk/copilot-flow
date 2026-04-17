@@ -8,7 +8,7 @@
 
 import path from 'path';
 import type { DatabaseSync as DatabaseSyncType } from 'node:sqlite';
-import type { MemoryEntry, StoreOptions } from '../types.js';
+import type { MemoryEntry, MemoryType, StoreOptions } from '../types.js';
 import { rankByBm25 } from './bm25.js';
 
 // Use require() so Vite does not statically resolve `node:sqlite` during test
@@ -28,12 +28,14 @@ CREATE TABLE IF NOT EXISTS entries (
   value      TEXT    NOT NULL,
   tags       TEXT    NOT NULL DEFAULT '[]',
   importance REAL    NOT NULL DEFAULT 3,
+  type       TEXT    NOT NULL DEFAULT 'fact',
   created_at INTEGER NOT NULL,
   expires_at INTEGER
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_ns_key    ON entries (namespace, key);
 CREATE INDEX IF NOT EXISTS idx_namespace        ON entries (namespace);
 CREATE INDEX IF NOT EXISTS idx_importance       ON entries (importance);
+CREATE INDEX IF NOT EXISTS idx_type             ON entries (type);
 `;
 
 export class MemoryStore {
@@ -54,13 +56,14 @@ export class MemoryStore {
     this.db.exec(SCHEMA);
     // Enable WAL for better concurrent read performance
     this.db.exec('PRAGMA journal_mode = WAL');
-    // Migration: add importance column to databases created before this feature.
-    // ALTER TABLE ADD COLUMN is idempotent when wrapped in try/catch.
+    // Migrations: ALTER TABLE ADD COLUMN is idempotent when wrapped in try/catch.
+    // Each migration is independent so a fresh DB only skips columns that already exist.
     try {
       this.db.exec('ALTER TABLE entries ADD COLUMN importance REAL NOT NULL DEFAULT 3');
-    } catch {
-      // Column already exists — no action needed.
-    }
+    } catch { /* column already exists */ }
+    try {
+      this.db.exec(`ALTER TABLE entries ADD COLUMN type TEXT NOT NULL DEFAULT 'fact'`);
+    } catch { /* column already exists */ }
   }
 
   /**
@@ -79,19 +82,21 @@ export class MemoryStore {
     const tags = JSON.stringify(opts.tags ?? []);
     // Clamp importance to [1, 5], default 3.
     const importance = Math.min(5, Math.max(1, Math.round(opts.importance ?? 3)));
+    const type = opts.type ?? 'fact';
 
     this.db
       .prepare(
-        `INSERT INTO entries (id, namespace, key, value, tags, importance, created_at, expires_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO entries (id, namespace, key, value, tags, importance, type, created_at, expires_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(namespace, key) DO UPDATE SET
            value      = excluded.value,
            tags       = excluded.tags,
            importance = excluded.importance,
+           type       = excluded.type,
            created_at = excluded.created_at,
            expires_at = excluded.expires_at`
       )
-      .run(id, namespace, key, value, tags, importance, now, expiresAt);
+      .run(id, namespace, key, value, tags, importance, type, now, expiresAt);
   }
 
   /** Retrieve a value by namespace and key. Returns null if not found or expired. */
@@ -116,28 +121,32 @@ export class MemoryStore {
    *
    * @param limit       Maximum results to return after re-ranking (default 20).
    * @param filterTags  When provided, only tag-matching entries are candidates.
+   * @param filterType  When provided, only entries of this type are candidates.
    */
-  search(namespace: string, query: string, limit = 20, filterTags?: string[]): MemoryEntry[] {
+  search(namespace: string, query: string, limit = 20, filterTags?: string[], filterType?: MemoryType): MemoryEntry[] {
     const like    = `%${query}%`;
     const hasTags = filterTags != null && filterTags.length > 0;
     const tagClause = hasTags
       ? `AND EXISTS (SELECT 1 FROM json_each(tags) AS t JOIN json_each(?) AS f ON t.value = f.value)`
       : '';
+    const typeClause = filterType != null ? `AND type = ?` : '';
     // Fetch up to CANDIDATE_LIMIT rows — no user LIMIT here so BM25 scores the
     // full candidate set before we slice to `limit`.
     const CANDIDATE_LIMIT = 500;
     const params: (string | number)[] = [namespace, like, like, Date.now()];
     if (hasTags) params.push(JSON.stringify(filterTags));
+    if (filterType != null) params.push(filterType);
     params.push(CANDIDATE_LIMIT);
 
     const rows = this.db
       .prepare(
-        `SELECT id, namespace, key, value, tags, importance, created_at, expires_at
+        `SELECT id, namespace, key, value, tags, importance, type, created_at, expires_at
          FROM entries
          WHERE namespace = ?
            AND (key LIKE ? OR value LIKE ?)
            AND (expires_at IS NULL OR expires_at > ?)
            ${tagClause}
+           ${typeClause}
          ORDER BY importance DESC, created_at DESC
          LIMIT ?`
       )
@@ -148,6 +157,7 @@ export class MemoryStore {
         value: string;
         tags: string;
         importance: number;
+        type: string;
         created_at: number;
         expires_at: number | null;
       }>;
@@ -159,6 +169,7 @@ export class MemoryStore {
       value: r.value,
       tags: JSON.parse(r.tags) as string[],
       importance: r.importance,
+      type: r.type as MemoryType,
       createdAt: r.created_at,
       expiresAt: r.expires_at ?? undefined,
     }));
@@ -173,21 +184,25 @@ export class MemoryStore {
    *
    * @param filterTags  When provided, only entries whose tags array shares at
    *                    least one element with this list are returned.
+   * @param filterType  When provided, only entries of this type are returned.
    */
-  list(namespace: string, filterTags?: string[]): MemoryEntry[] {
+  list(namespace: string, filterTags?: string[], filterType?: MemoryType): MemoryEntry[] {
     const hasTags = filterTags != null && filterTags.length > 0;
     const tagClause = hasTags
       ? `AND EXISTS (SELECT 1 FROM json_each(tags) AS t JOIN json_each(?) AS f ON t.value = f.value)`
       : '';
+    const typeClause = filterType != null ? `AND type = ?` : '';
     const params: (string | number)[] = [namespace, Date.now()];
     if (hasTags) params.push(JSON.stringify(filterTags));
+    if (filterType != null) params.push(filterType);
 
     const rows = this.db
       .prepare(
-        `SELECT id, namespace, key, value, tags, importance, created_at, expires_at
+        `SELECT id, namespace, key, value, tags, importance, type, created_at, expires_at
          FROM entries
          WHERE namespace = ? AND (expires_at IS NULL OR expires_at > ?)
          ${tagClause}
+         ${typeClause}
          ORDER BY importance DESC, created_at DESC`
       )
       .all(...params) as Array<{
@@ -197,6 +212,7 @@ export class MemoryStore {
         value: string;
         tags: string;
         importance: number;
+        type: string;
         created_at: number;
         expires_at: number | null;
       }>;
@@ -208,6 +224,7 @@ export class MemoryStore {
       value: r.value,
       tags: JSON.parse(r.tags) as string[],
       importance: r.importance,
+      type: r.type as MemoryType,
       createdAt: r.created_at,
       expiresAt: r.expires_at ?? undefined,
     }));

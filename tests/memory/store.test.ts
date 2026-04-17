@@ -351,6 +351,53 @@ describe('MemoryStore', () => {
     expect(store.search('ns', 'val')).toHaveLength(2);
   });
 
+  // ── Memory types ─────────────────────────────────────────────────────────
+
+  it('type defaults to "fact" when not provided', () => {
+    store.store('ns', 'key', 'value');
+    expect(store.list('ns')[0].type).toBe('fact');
+  });
+
+  it('stores and returns the specified type', () => {
+    store.store('ns', 'key', 'value', { type: 'decision' });
+    expect(store.list('ns')[0].type).toBe('decision');
+  });
+
+  it('upsert refreshes type', () => {
+    store.store('ns', 'key', 'value', { type: 'fact' });
+    store.store('ns', 'key', 'value', { type: 'decision' });
+    expect(store.list('ns')[0].type).toBe('decision');
+  });
+
+  it('list() with filterType returns only entries of that type', () => {
+    store.store('ns', 'fact-entry',     'v', { type: 'fact' });
+    store.store('ns', 'decision-entry', 'v', { type: 'decision' });
+    store.store('ns', 'context-entry',  'v', { type: 'context' });
+    const keys = store.list('ns', undefined, 'decision').map(e => e.key);
+    expect(keys).toEqual(['decision-entry']);
+  });
+
+  it('list() without filterType returns all types', () => {
+    store.store('ns', 'a', 'v', { type: 'fact' });
+    store.store('ns', 'b', 'v', { type: 'decision' });
+    store.store('ns', 'c', 'v', { type: 'workflow-state' });
+    expect(store.list('ns')).toHaveLength(3);
+  });
+
+  it('search() with filterType returns only entries of that type', () => {
+    store.store('ns', 'fact-entry',     'match value', { type: 'fact' });
+    store.store('ns', 'decision-entry', 'match value', { type: 'decision' });
+    const results = store.search('ns', 'match', 20, undefined, 'fact');
+    expect(results).toHaveLength(1);
+    expect(results[0].key).toBe('fact-entry');
+  });
+
+  it('search() without filterType returns entries of all types', () => {
+    store.store('ns', 'a', 'match', { type: 'fact' });
+    store.store('ns', 'b', 'match', { type: 'decision' });
+    expect(store.search('ns', 'match')).toHaveLength(2);
+  });
+
   // ── BM25 re-ranking ───────────────────────────────────────────────────────
 
   it('search() ranks higher-frequency entry above sparse match', () => {

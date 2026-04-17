@@ -22,8 +22,15 @@ copilot-flow memory store --namespace <ns> --key <key> --value <value> [--ttl <m
 | `--value <value>` | Value to store |
 | `--ttl <ms>` | Time-to-live in milliseconds (entry auto-deletes after this) |
 | `--importance <n>` | Importance score 1–5 (default 3). Higher-scored facts are injected first into agent prompts. |
+| `--type <type>` | Memory type: `fact` \| `decision` \| `workflow-state` \| `context` (default: `fact`) |
 
 **Importance scale**: 5 = critical (architecture/security decisions), 4 = important (key design choices), 3 = notable (standard facts), 2 = minor (supporting details), 1 = trivial.
+
+**Memory types**:
+- `fact` — general-purpose observation (default)
+- `decision` — a deliberate choice made during the project
+- `workflow-state` — serialised swarm partial result; **excluded from prompt injection**
+- `context` — background information that sets the scene
 
 ### `memory retrieve`
 
@@ -38,8 +45,12 @@ Search entries in a namespace. Results are ranked by **Okapi BM25** relevance
 higher — not just earliest-inserted first. Importance is used as a tiebreaker.
 
 ```bash
-copilot-flow memory search --namespace <ns> --query <text> [--limit <n>]
+copilot-flow memory search --namespace <ns> --query <text> [--limit <n>] [--type <type>]
 ```
+
+| Flag | Description |
+|------|-------------|
+| `--type <type>` | Filter to a specific memory type: `fact` \| `decision` \| `workflow-state` \| `context` |
 
 The LIKE filter (`key LIKE %query% OR value LIKE %query%`) acts as a broad recall
 net; BM25 re-ranks the candidate set by relevance before the limit is applied.
@@ -50,8 +61,12 @@ Tokenisation: lowercase, alphanumeric only, tokens < 2 chars dropped.
 List all keys in a namespace.
 
 ```bash
-copilot-flow memory list --namespace <ns>
+copilot-flow memory list --namespace <ns> [--type <type>]
 ```
+
+| Flag | Description |
+|------|-------------|
+| `--type <type>` | Filter to a specific memory type: `fact` \| `decision` \| `workflow-state` \| `context` |
 
 ### `memory delete`
 
@@ -170,6 +185,12 @@ Expired entries are filtered out of all read queries in SQL, so they are invisib
 immediately after expiry without any cleanup pass. Physical row deletion (to reclaim disk
 space) happens on the **write path** — at most once per minute — so reads are never
 penalised by a silent `DELETE` before every query.
+
+### workflow-state exclusion
+
+Entries stored with `--type workflow-state` are **never injected into prompts**. They exist
+purely as serialised blobs for swarm resumption and would pollute agent context if included.
+All other types (`fact`, `decision`, `context`) are eligible for injection.
 
 ### Layered injection
 

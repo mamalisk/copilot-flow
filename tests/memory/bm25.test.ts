@@ -11,6 +11,7 @@ function entry(key: string, value: string, importance = 3): MemoryEntry {
     value,
     tags: [],
     importance,
+    type: 'fact',
     createdAt: Date.now(),
   };
 }

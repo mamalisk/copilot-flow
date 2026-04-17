@@ -107,6 +107,15 @@ export interface SwarmState {
 
 // ─── Memory Types ─────────────────────────────────────────────────────────────
 
+/**
+ * Semantic type for a stored memory entry.
+ * - 'fact'           — general-purpose observation (default)
+ * - 'decision'       — a deliberate choice made during the project
+ * - 'workflow-state' — serialised partial swarm result; excluded from prompt injection
+ * - 'context'        — background information that sets the scene
+ */
+export type MemoryType = 'fact' | 'decision' | 'workflow-state' | 'context';
+
 export interface MemoryEntry {
   id: string;
   namespace: string;
@@ -115,6 +124,11 @@ export interface MemoryEntry {
   tags: string[];
   /** Importance score 1–5 (default 3). Higher values are injected first. */
   importance: number;
+  /**
+   * Semantic type of this entry (default: 'fact').
+   * 'workflow-state' entries are excluded from prompt injection.
+   */
+  type: MemoryType;
   createdAt: number;
   expiresAt?: number;
 }
@@ -133,6 +147,13 @@ export interface StoreOptions {
    * Higher-scored facts are injected first into agent prompts.
    */
   importance?: number;
+  /**
+   * Semantic type of this entry (default: 'fact').
+   * 'workflow-state' entries are excluded from prompt injection — they are
+   * reserved for swarm resumption (serialised partial results that should not
+   * pollute agent prompts).
+   */
+  type?: MemoryType;
 }
 
 // ─── Hook Types ───────────────────────────────────────────────────────────────

@@ -126,4 +126,24 @@ describe('buildMemoryContext — layered injection', () => {
     expect(buildMemoryContext('ns-a', undefined, store)).not.toContain('only-b');
     expect(buildMemoryContext('ns-b', undefined, store)).not.toContain('only-a');
   });
+
+  // ── Memory types ──────────────────────────────────────────────────────────
+
+  it('workflow-state entries are excluded from prompt injection', () => {
+    store.store('ns', 'prose-fact',      'a normal prose fact',     { type: 'fact' });
+    store.store('ns', 'swarm-blob',      '{"partial":"result"}',    { type: 'workflow-state' });
+    store.store('ns', 'design-decision', 'use JWT, no refresh',     { type: 'decision' });
+    const ctx = buildMemoryContext('ns', undefined, store);
+    expect(ctx).toContain('prose-fact');
+    expect(ctx).toContain('design-decision');
+    expect(ctx).not.toContain('swarm-blob');
+  });
+
+  it('workflow-state entries are excluded from the topic tier too', () => {
+    store.store('ns', 'code-fact',  'a code fact',        { type: 'fact',           tags: ['code'] });
+    store.store('ns', 'wf-state',   '{"state":"partial"}', { type: 'workflow-state', tags: ['code'] });
+    const ctx = buildMemoryContext('ns', ['code'], store);
+    expect(ctx).toContain('code-fact');
+    expect(ctx).not.toContain('wf-state');
+  });
 });
