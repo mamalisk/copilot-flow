@@ -254,4 +254,52 @@ describe('MemoryStore', () => {
   it('clear returns 0 when the namespace is already empty', () => {
     expect(store.clear('empty-ns')).toBe(0);
   });
+
+  // ── Importance scoring ────────────────────────────────────────────────────
+
+  it('importance defaults to 3 when not provided', () => {
+    store.store('ns', 'key', 'value');
+    expect(store.list('ns')[0].importance).toBe(3);
+  });
+
+  it('stores and returns the specified importance', () => {
+    store.store('ns', 'key', 'value', { importance: 5 });
+    expect(store.list('ns')[0].importance).toBe(5);
+  });
+
+  it('clamps importance below 1 to 1', () => {
+    store.store('ns', 'key', 'value', { importance: 0 });
+    expect(store.list('ns')[0].importance).toBe(1);
+  });
+
+  it('clamps importance above 5 to 5', () => {
+    store.store('ns', 'key', 'value', { importance: 99 });
+    expect(store.list('ns')[0].importance).toBe(5);
+  });
+
+  it('upsert refreshes importance', () => {
+    store.store('ns', 'key', 'value', { importance: 2 });
+    store.store('ns', 'key', 'value', { importance: 5 });
+    expect(store.list('ns')[0].importance).toBe(5);
+  });
+
+  it('list() orders by importance DESC then created_at DESC', () => {
+    store.store('ns', 'low',  'v', { importance: 1 });
+    store.store('ns', 'high', 'v', { importance: 5 });
+    store.store('ns', 'mid',  'v', { importance: 3 });
+    const keys = store.list('ns').map(e => e.key);
+    expect(keys).toEqual(['high', 'mid', 'low']);
+  });
+
+  it('search() orders by importance DESC then created_at DESC', () => {
+    store.store('ns', 'b', 'match', { importance: 2 });
+    store.store('ns', 'a', 'match', { importance: 4 });
+    const keys = store.search('ns', 'match').map(e => e.key);
+    expect(keys).toEqual(['a', 'b']);
+  });
+
+  it('search() results include importance', () => {
+    store.store('ns', 'key', 'value', { importance: 4 });
+    expect(store.search('ns', 'value')[0].importance).toBe(4);
+  });
 });

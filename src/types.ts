@@ -113,6 +113,8 @@ export interface MemoryEntry {
   key: string;
   value: string;
   tags: string[];
+  /** Importance score 1–5 (default 3). Higher values are injected first. */
+  importance: number;
   createdAt: number;
   expiresAt?: number;
 }
@@ -121,6 +123,16 @@ export interface StoreOptions {
   /** TTL in milliseconds. Entry is deleted after this duration. */
   ttlMs?: number;
   tags?: string[];
+  /**
+   * Importance score 1–5 (default 3).
+   * 5 = critical (architecture decisions, security constraints)
+   * 4 = important (key design choices)
+   * 3 = notable (standard facts, configurations)
+   * 2 = minor (supporting details)
+   * 1 = trivial (low-signal observations)
+   * Higher-scored facts are injected first into agent prompts.
+   */
+  importance?: number;
 }
 
 // ─── Hook Types ───────────────────────────────────────────────────────────────

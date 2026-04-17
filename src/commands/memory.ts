@@ -13,12 +13,13 @@ Rules:
 - Each fact must be self-contained (no pronouns or references to "the above" or "this output")
 - Values must be 1–2 sentences maximum
 - Use tags from this set: decision | constraint | requirement | architecture | code | api | config
+- Assign importance 1–5: 5=critical (architecture/security decisions), 4=important (key design choices), 3=notable (standard facts), 2=minor (supporting details), 1=trivial
 - Output ONLY a JSON array — no surrounding text, no markdown fences
 
 Example output:
 [
-  {"key":"auth-strategy","value":"JWT with 15-min expiry, no refresh tokens","tags":["decision","architecture"]},
-  {"key":"database","value":"PostgreSQL 16, repository pattern, no ORM","tags":["architecture","constraint"]}
+  {"key":"auth-strategy","value":"JWT with 15-min expiry, no refresh tokens","tags":["decision","architecture"],"importance":5},
+  {"key":"database","value":"PostgreSQL 16, repository pattern, no ORM","tags":["architecture","constraint"],"importance":4}
 ]
 
 Output to distil:
@@ -36,11 +37,13 @@ export function registerMemory(program: Command): void {
     .requiredOption('--value <value>', 'Value to store')
     .option('--ttl <ms>', 'Time-to-live in milliseconds (optional)')
     .option('--tags <tags>', 'Comma-separated tags')
-    .action((opts: { namespace: string; key: string; value: string; ttl?: string; tags?: string }) => {
+    .option('--importance <n>', 'Importance score 1–5 (default 3; 5=critical, 1=trivial)')
+    .action((opts: { namespace: string; key: string; value: string; ttl?: string; tags?: string; importance?: string }) => {
       const store = getMemoryStore();
       store.store(opts.namespace, opts.key, opts.value, {
         ttlMs: opts.ttl != null ? parseInt(opts.ttl, 10) : undefined,
         tags: opts.tags?.split(',').map(t => t.trim()),
+        importance: opts.importance != null ? parseInt(opts.importance, 10) : undefined,
       });
       output.success(`Stored: ${opts.namespace}/${opts.key}`);
     });
@@ -83,6 +86,7 @@ export function registerMemory(program: Command): void {
           ['Key', entry.key],
           ['Value', entry.value.slice(0, 100) + (entry.value.length > 100 ? '…' : '')],
           ['Tags', entry.tags.join(', ') || '—'],
+          ['Importance', String(entry.importance)],
           ['Created', new Date(entry.createdAt).toISOString()],
         ]);
         output.blank();
@@ -105,7 +109,8 @@ export function registerMemory(program: Command): void {
 
       output.header(`Memory: ${opts.namespace} (${entries.length} entries)`);
       for (const entry of entries) {
-        output.print(`  ${entry.key}: ${entry.value.slice(0, 60)}${entry.value.length > 60 ? '…' : ''}`);
+        const badge = entry.importance !== 3 ? ` [${entry.importance}]` : '';
+        output.print(`  ${entry.key}${badge}: ${entry.value.slice(0, 60)}${entry.value.length > 60 ? '…' : ''}`);
       }
     });
 

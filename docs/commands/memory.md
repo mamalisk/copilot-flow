@@ -21,6 +21,9 @@ copilot-flow memory store --namespace <ns> --key <key> --value <value> [--ttl <m
 | `--key <key>` | Entry identifier |
 | `--value <value>` | Value to store |
 | `--ttl <ms>` | Time-to-live in milliseconds (entry auto-deletes after this) |
+| `--importance <n>` | Importance score 1–5 (default 3). Higher-scored facts are injected first into agent prompts. |
+
+**Importance scale**: 5 = critical (architecture/security decisions), 4 = important (key design choices), 3 = notable (standard facts), 2 = minor (supporting details), 1 = trivial.
 
 ### `memory retrieve`
 

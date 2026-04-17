@@ -26,7 +26,9 @@ export function buildMemoryContext(namespace: string): string {
 
   const lines = entries.map(e => {
     const tagSuffix = e.tags.length > 0 ? ` [${e.tags.join(', ')}]` : '';
-    return `• ${e.key}: ${e.value}${tagSuffix}`;
+    // Surface importance only for high-priority entries so the model notices them.
+    const importanceBadge = e.importance >= 4 ? ` (importance: ${e.importance})` : '';
+    return `• ${e.key}: ${e.value}${tagSuffix}${importanceBadge}`;
   });
 
   return `## Remembered context\n${lines.join('\n')}\n\n`;

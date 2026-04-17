@@ -26,12 +26,13 @@ CREATE TABLE IF NOT EXISTS entries (
   key        TEXT    NOT NULL,
   value      TEXT    NOT NULL,
   tags       TEXT    NOT NULL DEFAULT '[]',
+  importance REAL    NOT NULL DEFAULT 3,
   created_at INTEGER NOT NULL,
   expires_at INTEGER
 );
-CREATE UNIQUE INDEX IF NOT EXISTS idx_ns_key ON entries (namespace, key);
-CREATE INDEX IF NOT EXISTS idx_namespace   ON entries (namespace);
-CREATE INDEX IF NOT EXISTS idx_tags        ON entries (tags);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_ns_key    ON entries (namespace, key);
+CREATE INDEX IF NOT EXISTS idx_namespace        ON entries (namespace);
+CREATE INDEX IF NOT EXISTS idx_importance       ON entries (importance);
 `;
 
 export class MemoryStore {
@@ -52,6 +53,13 @@ export class MemoryStore {
     this.db.exec(SCHEMA);
     // Enable WAL for better concurrent read performance
     this.db.exec('PRAGMA journal_mode = WAL');
+    // Migration: add importance column to databases created before this feature.
+    // ALTER TABLE ADD COLUMN is idempotent when wrapped in try/catch.
+    try {
+      this.db.exec('ALTER TABLE entries ADD COLUMN importance REAL NOT NULL DEFAULT 3');
+    } catch {
+      // Column already exists — no action needed.
+    }
   }
 
   /**
@@ -68,18 +76,21 @@ export class MemoryStore {
     const now = Date.now();
     const expiresAt = opts.ttlMs != null ? now + opts.ttlMs : null;
     const tags = JSON.stringify(opts.tags ?? []);
+    // Clamp importance to [1, 5], default 3.
+    const importance = Math.min(5, Math.max(1, Math.round(opts.importance ?? 3)));
 
     this.db
       .prepare(
-        `INSERT INTO entries (id, namespace, key, value, tags, created_at, expires_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO entries (id, namespace, key, value, tags, importance, created_at, expires_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(namespace, key) DO UPDATE SET
-           value = excluded.value,
-           tags = excluded.tags,
+           value      = excluded.value,
+           tags       = excluded.tags,
+           importance = excluded.importance,
            created_at = excluded.created_at,
            expires_at = excluded.expires_at`
       )
-      .run(id, namespace, key, value, tags, now, expiresAt);
+      .run(id, namespace, key, value, tags, importance, now, expiresAt);
   }
 
   /** Retrieve a value by namespace and key. Returns null if not found or expired. */
@@ -96,18 +107,19 @@ export class MemoryStore {
 
   /**
    * Search entries in a namespace by substring match on key or value.
+   * Results are ordered by importance DESC, then created_at DESC.
    * Returns up to `limit` results (default 20).
    */
   search(namespace: string, query: string, limit = 20): MemoryEntry[] {
     const like = `%${query}%`;
     const rows = this.db
       .prepare(
-        `SELECT id, namespace, key, value, tags, created_at, expires_at
+        `SELECT id, namespace, key, value, tags, importance, created_at, expires_at
          FROM entries
          WHERE namespace = ?
            AND (key LIKE ? OR value LIKE ?)
            AND (expires_at IS NULL OR expires_at > ?)
-         ORDER BY created_at DESC
+         ORDER BY importance DESC, created_at DESC
          LIMIT ?`
       )
       .all(namespace, like, like, Date.now(), limit) as Array<{
@@ -116,6 +128,7 @@ export class MemoryStore {
         key: string;
         value: string;
         tags: string;
+        importance: number;
         created_at: number;
         expires_at: number | null;
       }>;
@@ -126,19 +139,24 @@ export class MemoryStore {
       key: r.key,
       value: r.value,
       tags: JSON.parse(r.tags) as string[],
+      importance: r.importance,
       createdAt: r.created_at,
       expiresAt: r.expires_at ?? undefined,
     }));
   }
 
-  /** List all non-expired entries in a namespace. */
+  /**
+   * List all non-expired entries in a namespace.
+   * Results are ordered by importance DESC, then created_at DESC so that
+   * higher-priority facts are injected first when building prompt context.
+   */
   list(namespace: string): MemoryEntry[] {
     const rows = this.db
       .prepare(
-        `SELECT id, namespace, key, value, tags, created_at, expires_at
+        `SELECT id, namespace, key, value, tags, importance, created_at, expires_at
          FROM entries
          WHERE namespace = ? AND (expires_at IS NULL OR expires_at > ?)
-         ORDER BY created_at DESC`
+         ORDER BY importance DESC, created_at DESC`
       )
       .all(namespace, Date.now()) as Array<{
         id: string;
@@ -146,6 +164,7 @@ export class MemoryStore {
         key: string;
         value: string;
         tags: string;
+        importance: number;
         created_at: number;
         expires_at: number | null;
       }>;
@@ -156,6 +175,7 @@ export class MemoryStore {
       key: r.key,
       value: r.value,
       tags: JSON.parse(r.tags) as string[],
+      importance: r.importance,
       createdAt: r.created_at,
       expiresAt: r.expires_at ?? undefined,
     }));

@@ -26,24 +26,29 @@ under the same keys rather than creating new rows.
 
 ---
 
-## 2. Importance scoring on stored facts
+## ✅ 2. Importance scoring on stored facts
 
-**Current behaviour**: all facts are treated equally. A trivial config note and a
-critical architecture decision are stored, ranked, and injected identically.
+> **Implemented** — `StoreOptions` and `MemoryEntry` both carry `importance: number` (1–5,
+> default 3). The SQLite schema has an `importance REAL NOT NULL DEFAULT 3` column with an
+> index. `list()` and `search()` sort by `importance DESC, created_at DESC` so higher-priority
+> facts are always first. `buildMemoryContext` surfaces importance badges for entries scoring
+> 4–5. The built-in distillation prompts ask for an `importance` field per fact and pass it
+> through to `store()`. The `memory store` CLI accepts `--importance <n>`. Existing databases
+> are migrated automatically via `ALTER TABLE ADD COLUMN`.
 
-**Problem**: `buildMemoryContext` returns the 50 most-recent entries ordered by
-`created_at DESC`. Recency is a poor proxy for relevance — the most important decision
-from last week beats an incidental observation from this morning.
+~~**Current behaviour**: all facts are treated equally. A trivial config note and a~~
+~~critical architecture decision are stored, ranked, and injected identically.~~
 
-**Inspiration**: mempalace `layers.py` — every drawer has an `importance` float (1–5).
-Layer 1 sorts by importance descending and keeps the top 15 moments.
-
-**Proposal**:
-- Add `importance?: number` (1–5, default 3) to `StoreOptions` and the `MemoryEntry` type
-- Add an `importance REAL DEFAULT 3` column to the SQLite schema
-- Update the built-in distillation prompt to ask the model to produce an importance score
-  alongside key/value/tags
-- Change `buildMemoryContext`'s sort from `created_at DESC` to `importance DESC, created_at DESC`
+**What changed**:
+- `importance?: number` (1–5, default 3) added to `StoreOptions`; `importance: number`
+  added to `MemoryEntry`
+- SQLite schema: `importance REAL NOT NULL DEFAULT 3` column + index; automatic `ALTER TABLE`
+  migration for existing databases
+- `list()` and `search()` sort by `importance DESC, created_at DESC`
+- `buildMemoryContext` appends `(importance: N)` badge for entries ≥ 4
+- Built-in distillation prompt asks the model for an `importance` score per fact
+- `memory store` CLI accepts `--importance <n>` (clamped to 1–5)
+- 8 new tests cover defaults, clamping, upsert refresh, and sort order
 
 ---
 
@@ -189,7 +194,7 @@ copilot-flow memory identity   # (new subcommand, analogous to `memory prime`)
 | # | Item | Effort | Impact | Depends on | Status |
 |---|------|--------|--------|-----------|--------|
 | 1 | Upsert dedup | XS | High | — | ✅ Done |
-| 2 | Importance scoring | S | High | — | Pending |
+| 2 | Importance scoring | S | High | — | ✅ Done |
 | 3 | Tag filtering in injection | S | Medium | — | Pending |
 | 4 | Move pruning off read path | XS | Medium | — | ✅ Done |
 | 5 | BM25 search | M | Medium | — | Pending |
