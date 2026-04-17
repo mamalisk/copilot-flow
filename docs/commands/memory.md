@@ -82,15 +82,14 @@ Delete all entries in a namespace.
 copilot-flow memory clear --namespace <ns>
 ```
 
-### `memory prime`
+### `memory prime` *(deprecated)*
 
-Create `.github/memory-prompt.md` pre-filled with the default distillation prompt.
-Once the file exists, edit it to control exactly what facts agents extract and store
-after each run (see [Automatic distillation](#automatic-distillation-memory-namespace) below).
+> **Deprecated** — use `copilot-flow init` instead. `init` creates `.github/memory-prompt.md`,
+> `.github/memory-identity.md`, and agent prompt files in `.github/agents/` in one step.
 
 ```bash
-copilot-flow memory prime           # create .github/memory-prompt.md (skips if exists)
-copilot-flow memory prime --force   # overwrite existing file
+copilot-flow memory prime           # [deprecated] create .github/memory-prompt.md (skips if exists)
+copilot-flow memory prime --force   # [deprecated] overwrite existing file
 ```
 
 | Flag | Description |
@@ -161,6 +160,81 @@ copilot-flow exec phases.yaml --memory-namespace my-project
 The file must end with a line that the agent's output will be appended to (e.g.
 `Output to distil:`). The prompt must instruct the model to return **only** a JSON
 array of `{key, value, tags}` objects — no surrounding text.
+
+---
+
+## Project identity block
+
+If `.github/memory-identity.md` exists in the project root, its content is prepended to
+every memory-injected prompt as a `## Project identity` section — **before** the dynamic
+`## Remembered context` facts. This gives agents a stable project brief that never ages
+out of TTL or gets distilled away.
+
+The file is created automatically by `copilot-flow init`. Edit it to describe your project:
+
+```markdown
+# Project Identity
+
+## Project name
+TripMind
+
+## Purpose
+AI-powered travel planning SaaS for frequent travellers aged 28–45.
+
+## Tech stack
+Next.js 14 App Router, Prisma, PostgreSQL, Tailwind CSS
+
+## Key constraints
+TypeScript strict mode, tests required for all changes
+
+## Team conventions
+Feature branches, PRs require approval, conventional commits
+```
+
+**Scope**: the identity block is only injected when `--memory-namespace` is active
+(i.e. the same runs that inject remembered facts). Agents running without
+`--memory-namespace` do not receive the identity block.
+
+**Size**: keep the file under ~200 words. It is injected on every run; a large identity
+file leaves less room for dynamic facts.
+
+---
+
+## Agent prompt customisation
+
+When `copilot-flow init` runs it creates a `.github/agents/` directory containing one
+`.md` file per built-in agent type (e.g. `coder.md`, `reviewer.md`, `architect.md`).
+
+Each file contains the default system message for that agent. When the file exists,
+its trimmed content **replaces** the built-in registry default for that agent type —
+no code changes required.
+
+```
+.github/
+  agents/
+    coder.md            ← edit to add your tech stack, coding conventions, etc.
+    reviewer.md
+    architect.md
+    tester.md
+    ...
+```
+
+**Example** — adding project-specific context to the `coder` agent:
+
+```
+You are an expert software engineer. Write clean, efficient, production-ready code.
+Follow best practices, add appropriate error handling, and include inline comments
+only where logic is non-obvious.
+
+Project-specific rules:
+- Use TypeScript strict mode; never use `any`
+- All database access goes through the repository layer in src/repositories/
+- Tests are required for every public function (vitest)
+- Keep components under 200 lines; extract hooks for logic
+```
+
+Files that do not exist fall back to the built-in registry defaults, so you can
+customise only the agents that need project-specific guidance.
 
 ---
 

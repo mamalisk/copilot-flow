@@ -165,29 +165,42 @@ semantic meaning — there is no way to query "all decisions" or "all workflow s
 
 ---
 
-## 8. Project identity block
+## ✅ 8. Project identity block
 
-**Current behaviour**: memory injection always starts with distilled facts from the run.
-There is no stable, always-present context about what the project is, who works on it, or
-what the core constraints are.
+> **Implemented** — `loadIdentityContent(cwd?)` exported from `src/memory/inject.ts` reads
+> `.github/memory-identity.md` and returns its trimmed content (or `''` if absent).
+> `buildMemoryContext` gains an optional `identityContent?: string` 4th parameter; when
+> non-empty, a `## Project identity` section is prepended before `## Remembered context`.
+> All callers (`exec.ts`, `agent.ts`, `swarm/coordinator.ts`) pass `loadIdentityContent()`
+> so identity injection is automatic when `--memory-namespace` is active.
+> `copilot-flow init` creates `.github/memory-identity.md` from a template on first run;
+> `memory prime` is deprecated in favour of `init`. Agent prompt files are also scaffolded
+> by `init` under `.github/agents/<type>.md` — when a file exists its content replaces the
+> registry default system message, allowing per-project agent customisation.
+> 5 new tests in `tests/memory/inject.test.ts`; 2 new tests in `tests/agents/executor.test.ts`.
+> Documented in [docs/commands/memory.md](../commands/memory.md#project-identity-block).
 
-**Problem**: agents re-discover basic project context on every run. A researcher phase
-may need to understand the tech stack before it can store anything useful — but that
-understanding is itself not persisted.
+~~**Current behaviour**: memory injection always starts with distilled facts from the run.~~
+~~There is no stable, always-present context about what the project is, who works on it, or~~
+~~what the core constraints are.~~
 
-**Inspiration**: mempalace `Layer0` / `identity.txt` (~100 tokens, always loaded).
-A small plain-text file the user writes once. Every session starts by reading it.
-mempalace calls this the "wake-up anchor".
-
-**Proposal**: if `.github/memory-identity.md` exists, always prepend its content to
-every memory-injected prompt — before the dynamic facts block — regardless of namespace.
-The file is user-managed, not auto-generated, so it never ages out of TTL.
-
-```bash
-# Initialise the identity file
-copilot-flow memory identity   # (new subcommand, analogous to `memory prime`)
-# Edit .github/memory-identity.md to describe the project
-```
+**What changed**:
+- `loadIdentityContent(cwd?)` exported from `src/memory/inject.ts` — reads
+  `.github/memory-identity.md` from `cwd` (default `process.cwd()`); returns trimmed
+  content or `''` if the file does not exist
+- `buildMemoryContext(namespace, filterTags?, store?, identityContent?)` — when
+  `identityContent` is non-empty, prepends `## Project identity\n<content>` before the
+  facts block; the new parameter keeps the function pure and testable (no implicit fs reads)
+- All callers updated to pass `loadIdentityContent()` when `memoryNamespace` is active
+- `copilot-flow init` now creates: `.github/memory-identity.md` (template), `.github/memory-prompt.md`
+  (distillation prompt, replaces `memory prime`), and `.github/agents/<type>.md` for all 12 agent types
+- `memory prime` emits a deprecation warning and points users to `copilot-flow init`
+- `src/agents/executor.ts` checks for `.github/agents/<agentType>.md`; when present, its
+  content replaces the registry system message — per-project agent prompt customisation
+  without code changes
+- `IDENTITY_FILE` constant exported from `inject.ts` for library consumers
+- 5 new inject tests; 2 new executor tests (spy-based, using default `fs` import for
+  interceptability)
 
 ---
 
@@ -202,4 +215,4 @@ copilot-flow memory identity   # (new subcommand, analogous to `memory prime`)
 | 5 | BM25 search | M | Medium | — | ✅ Done |
 | 6 | Layered injection | M | High | #2 | ✅ Done |
 | 7 | Memory types | S | Medium | — | ✅ Done |
-| 8 | Project identity block | S | Medium | — | Pending |
+| 8 | Project identity block | S | Medium | — | ✅ Done |
