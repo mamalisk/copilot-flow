@@ -7,8 +7,17 @@
  */
 
 import path from 'path';
-import { DatabaseSync } from 'node:sqlite';
+import type { DatabaseSync as DatabaseSyncType } from 'node:sqlite';
 import type { MemoryEntry, StoreOptions } from '../types.js';
+
+// Use require() so Vite does not statically resolve `node:sqlite` during test
+// transforms. Vite strips the `node:` prefix from static imports and then fails
+// to find an npm package named `sqlite`. require() is also consistent with the
+// rest of this file's CJS-compatible style (tsconfig module: commonjs).
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { DatabaseSync } = require('node:sqlite') as {
+  DatabaseSync: typeof DatabaseSyncType;
+};
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS entries (
@@ -26,7 +35,11 @@ CREATE INDEX IF NOT EXISTS idx_tags        ON entries (tags);
 `;
 
 export class MemoryStore {
-  private db: DatabaseSync;
+  private db: InstanceType<typeof DatabaseSyncType>;
+  /** Timestamp of the last expired-row purge. Used to throttle write-time cleanup. */
+  private _lastPruneAt = 0;
+  /** Minimum milliseconds between automatic prune runs (default: 60 s). */
+  private readonly _PRUNE_INTERVAL_MS = 60_000;
 
   constructor(dbPath = path.join('.copilot-flow', 'memory.db')) {
     const absPath = path.resolve(dbPath);
@@ -41,9 +54,16 @@ export class MemoryStore {
     this.db.exec('PRAGMA journal_mode = WAL');
   }
 
-  /** Store a value under namespace/key. Upserts if key already exists. */
+  /**
+   * Store a value under namespace/key. Upserts if key already exists —
+   * re-running distillation on the same phase updates facts in place rather
+   * than accumulating duplicate rows.
+   *
+   * Expired rows are purged here (write path) at most once per minute, so
+   * reads are never penalised by a silent DELETE before every query.
+   */
   store(namespace: string, key: string, value: string, opts: StoreOptions = {}): void {
-    this._pruneExpired();
+    this._pruneExpiredIfDue();
     const id = `${namespace}:${key}`;
     const now = Date.now();
     const expiresAt = opts.ttlMs != null ? now + opts.ttlMs : null;
@@ -64,7 +84,6 @@ export class MemoryStore {
 
   /** Retrieve a value by namespace and key. Returns null if not found or expired. */
   retrieve(namespace: string, key: string): string | null {
-    this._pruneExpired();
     const row = this.db
       .prepare(
         `SELECT value FROM entries WHERE namespace = ? AND key = ?
@@ -80,7 +99,6 @@ export class MemoryStore {
    * Returns up to `limit` results (default 20).
    */
   search(namespace: string, query: string, limit = 20): MemoryEntry[] {
-    this._pruneExpired();
     const like = `%${query}%`;
     const rows = this.db
       .prepare(
@@ -115,7 +133,6 @@ export class MemoryStore {
 
   /** List all non-expired entries in a namespace. */
   list(namespace: string): MemoryEntry[] {
-    this._pruneExpired();
     const rows = this.db
       .prepare(
         `SELECT id, namespace, key, value, tags, created_at, expires_at
@@ -165,10 +182,19 @@ export class MemoryStore {
     this.db.close();
   }
 
-  private _pruneExpired(): void {
+  /**
+   * Delete expired rows. Throttled to at most once per `_PRUNE_INTERVAL_MS` so
+   * a burst of store() calls (e.g. distilling 10 facts at once) doesn't hammer
+   * SQLite with repeated DELETEs. Read methods skip this entirely — they already
+   * filter expired rows in their WHERE clauses, so correctness is unaffected.
+   */
+  private _pruneExpiredIfDue(): void {
+    const now = Date.now();
+    if (now - this._lastPruneAt < this._PRUNE_INTERVAL_MS) return;
     this.db
       .prepare(`DELETE FROM entries WHERE expires_at IS NOT NULL AND expires_at <= ?`)
-      .run(Date.now());
+      .run(now);
+    this._lastPruneAt = now;
   }
 }
 
