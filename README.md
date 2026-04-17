@@ -23,7 +23,8 @@ copilot-flow lets you orchestrate **fleets of GitHub Copilot agents** that work 
 Inspired by [Ruflo (claude-flow)](https://github.com/ruvnet/claude-flow), built on the official [`@github/copilot-sdk`](https://github.com/github/copilot-sdk).
 
 ---
-
+![Demo](assets/copilot-exec-demo.mp4)
+---
 ## What can you build?
 
 ### From a napkin idea to a shipped product
