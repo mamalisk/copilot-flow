@@ -33,11 +33,17 @@ copilot-flow memory retrieve --namespace <ns> --key <key>
 
 ### `memory search`
 
-Full-text search across all values in a namespace.
+Search entries in a namespace. Results are ranked by **Okapi BM25** relevance
+(k1=1.5, b=0.75) so entries that mention the query terms more frequently rank
+higher — not just earliest-inserted first. Importance is used as a tiebreaker.
 
 ```bash
-copilot-flow memory search --namespace <ns> --query <text>
+copilot-flow memory search --namespace <ns> --query <text> [--limit <n>]
 ```
+
+The LIKE filter (`key LIKE %query% OR value LIKE %query%`) acts as a broad recall
+net; BM25 re-ranks the candidate set by relevance before the limit is applied.
+Tokenisation: lowercase, alphanumeric only, tokens < 2 chars dropped.
 
 ### `memory list`
 

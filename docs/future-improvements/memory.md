@@ -91,26 +91,24 @@ A burst of 10 distilled facts stores at most one `DELETE` pass total.
 
 ---
 
-## 5. BM25 search to replace `LIKE %query%`
+## ✅ 5. BM25 search to replace `LIKE %query%`
 
-**Current behaviour**: `store.search(namespace, query)` executes
-`WHERE (key LIKE ? OR value LIKE ?)` with wildcards. Results are ordered by `created_at DESC`.
+> **Implemented** — `store.search()` now fetches LIKE candidates (broad recall net) then
+> re-ranks them with Okapi BM25 (k1=1.5, b=0.75) in `src/memory/bm25.ts`. Tokenisation:
+> lowercase, split on non-alphanumeric, drop tokens < 2 chars. IDF is computed over the
+> candidate set; TF is normalized by document length against the average. Results are
+> sorted BM25 score DESC, importance DESC for ties. Pure TypeScript, no dependencies.
+> 13 unit tests in `tests/memory/bm25.test.ts` + 4 integration tests in `store.test.ts`.
 
-**Problem**: substring match misses conceptually related facts (`"auth"` won't find
-`"JWT"`, `"OpenID"`, or `"session tokens"`). There is no relevance ranking — a fact that
-mentions the query once ranks identically to one that mentions it ten times.
+~~**Current behaviour**: `store.search(namespace, query)` executes~~
+~~`WHERE (key LIKE ? OR value LIKE ?)` with results ordered by `created_at DESC`.~~
 
-**Inspiration**: mempalace `searcher.py` — full Okapi-BM25 (k1=1.5, b=0.75) computed over
-the candidate set, combined with vector similarity in a 60/40 convex combination.
-
-**Proposal**: implement BM25 scoring in TypeScript within `store.search()`:
-1. Fetch candidates via `LIKE` (broad net, preserves recall)
-2. Tokenise query and candidates (lowercase + alphanumeric, length ≥ 2)
-3. Compute IDF over the candidate set and TF per document
-4. Return ranked by BM25 score descending
-
-Pure TypeScript, no external dependencies, no embeddings required. This makes
-`memory search` genuinely useful for recall queries.
+**What changed**:
+- New `src/memory/bm25.ts` — exports `tokenize(text)` and `rankByBm25(queryText, entries)`
+- `store.search()` fetches up to 500 LIKE-matched candidates (internal `CANDIDATE_LIMIT`),
+  passes them to `rankByBm25`, then slices to the user's `limit`
+- Tiebreaking falls back to `importance DESC` when BM25 scores are equal
+- When query tokenises to zero terms (e.g. single-char query), falls back to `importance DESC`
 
 ---
 
@@ -192,7 +190,7 @@ copilot-flow memory identity   # (new subcommand, analogous to `memory prime`)
 | 2 | Importance scoring | S | High | — | ✅ Done |
 | 3 | Tag filtering in injection | S | Medium | — | ✅ Done |
 | 4 | Move pruning off read path | XS | Medium | — | ✅ Done |
-| 5 | BM25 search | M | Medium | — | Pending |
+| 5 | BM25 search | M | Medium | — | ✅ Done |
 | 6 | Layered injection | M | High | #2 | ✅ Done |
 | 7 | Memory types | S | Medium | — | Pending |
 | 8 | Project identity block | S | Medium | — | Pending |

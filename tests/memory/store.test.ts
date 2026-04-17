@@ -350,4 +350,32 @@ describe('MemoryStore', () => {
     store.store('ns', 'b', 'val', { tags: ['api'] });
     expect(store.search('ns', 'val')).toHaveLength(2);
   });
+
+  // ── BM25 re-ranking ───────────────────────────────────────────────────────
+
+  it('search() ranks higher-frequency entry above sparse match', () => {
+    store.store('ns', 'frequent', 'JWT JWT JWT JWT authentication strategy');
+    store.store('ns', 'sparse',   'PostgreSQL JWT connection');
+    const results = store.search('ns', 'jwt');
+    expect(results[0].key).toBe('frequent');
+  });
+
+  it('search() uses importance as tiebreaker for equal BM25 scores', () => {
+    store.store('ns', 'low',  'match value', { importance: 1 });
+    store.store('ns', 'high', 'match value', { importance: 5 });
+    const results = store.search('ns', 'match');
+    expect(results[0].key).toBe('high');
+  });
+
+  it('search() applies BM25 then respects the limit', () => {
+    for (let i = 0; i < 10; i++) store.store('ns', `k-${i}`, 'keyword value');
+    expect(store.search('ns', 'keyword', 3)).toHaveLength(3);
+  });
+
+  it('search() BM25 ranking is not broken by filterTags', () => {
+    store.store('ns', 'frequent', 'JWT JWT JWT auth', { tags: ['code'] });
+    store.store('ns', 'sparse',   'JWT token',        { tags: ['code'] });
+    const results = store.search('ns', 'jwt', 20, ['code']);
+    expect(results[0].key).toBe('frequent');
+  });
 });

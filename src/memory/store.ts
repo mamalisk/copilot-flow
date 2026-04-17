@@ -9,6 +9,7 @@
 import path from 'path';
 import type { DatabaseSync as DatabaseSyncType } from 'node:sqlite';
 import type { MemoryEntry, StoreOptions } from '../types.js';
+import { rankByBm25 } from './bm25.js';
 
 // Use require() so Vite does not statically resolve `node:sqlite` during test
 // transforms. Vite strips the `node:` prefix from static imports and then fails
@@ -106,22 +107,28 @@ export class MemoryStore {
   }
 
   /**
-   * Search entries in a namespace by substring match on key or value.
-   * Results are ordered by importance DESC, then created_at DESC.
-   * Returns up to `limit` results (default 20).
+   * Search entries in a namespace by substring match on key or value,
+   * re-ranked by Okapi BM25 relevance score.
    *
-   * @param filterTags  When provided, only entries whose tags array shares at
-   *                    least one element with this list are returned.
+   * The LIKE query acts as a broad recall filter; BM25 re-ranks the candidate
+   * set by how well each entry's `key + value` text matches the query tokens.
+   * Results are sorted BM25 score DESC, then importance DESC for ties.
+   *
+   * @param limit       Maximum results to return after re-ranking (default 20).
+   * @param filterTags  When provided, only tag-matching entries are candidates.
    */
   search(namespace: string, query: string, limit = 20, filterTags?: string[]): MemoryEntry[] {
-    const like = `%${query}%`;
+    const like    = `%${query}%`;
     const hasTags = filterTags != null && filterTags.length > 0;
     const tagClause = hasTags
       ? `AND EXISTS (SELECT 1 FROM json_each(tags) AS t JOIN json_each(?) AS f ON t.value = f.value)`
       : '';
+    // Fetch up to CANDIDATE_LIMIT rows — no user LIMIT here so BM25 scores the
+    // full candidate set before we slice to `limit`.
+    const CANDIDATE_LIMIT = 500;
     const params: (string | number)[] = [namespace, like, like, Date.now()];
     if (hasTags) params.push(JSON.stringify(filterTags));
-    params.push(limit);
+    params.push(CANDIDATE_LIMIT);
 
     const rows = this.db
       .prepare(
@@ -145,7 +152,7 @@ export class MemoryStore {
         expires_at: number | null;
       }>;
 
-    return rows.map(r => ({
+    const entries = rows.map(r => ({
       id: r.id,
       namespace: r.namespace,
       key: r.key,
@@ -155,6 +162,8 @@ export class MemoryStore {
       createdAt: r.created_at,
       expiresAt: r.expires_at ?? undefined,
     }));
+
+    return rankByBm25(query, entries).slice(0, limit);
   }
 
   /**
