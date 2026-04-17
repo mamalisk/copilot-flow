@@ -23,10 +23,14 @@ copilot-flow lets you orchestrate **fleets of GitHub Copilot agents** that work 
 Inspired by [Ruflo (claude-flow)](https://github.com/ruvnet/claude-flow), built on the official [`@github/copilot-sdk`](https://github.com/github/copilot-sdk).
 
 ---
-![Demo](assets/copilot-exec-demo.mp4)
----
-## What can you build?
+<video src="https://private-user-images.githubusercontent.com/1636115/579885141-16163c1f-3f59-43de-b8bb-6a4e55f880a8.mp4?jwt=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3NzY0MjgyNzEsIm5iZiI6MTc3NjQyNzk3MSwicGF0aCI6Ii8xNjM2MTE1LzU3OTg4NTE0MS0xNjE2M2MxZi0zZjU5LTQzZGUtYjhiYi02YTRlNTVmODgwYTgubXA0P1gtQW16LUFsZ29yaXRobT1BV1M0LUhNQUMtU0hBMjU2JlgtQW16LUNyZWRlbnRpYWw9QUtJQVZDT0RZTFNBNTNQUUs0WkElMkYyMDI2MDQxNyUyRnVzLWVhc3QtMSUyRnMzJTJGYXdzNF9yZXF1ZXN0JlgtQW16LURhdGU9MjAyNjA0MTdUMTIxMjUxWiZYLUFtei1FeHBpcmVzPTMwMCZYLUFtei1TaWduYXR1cmU9M2EzN2ZmMzcyMDM1MGE4ZDI3M2RlMDA0OTM0MGZiZmVmZmIwNmQ4M2M0NWJmMTkyNjViZDA1MmU0ZGJjNWE3MSZYLUFtei1TaWduZWRIZWFkZXJzPWhvc3QmcmVzcG9uc2UtY29udGVudC10eXBlPXZpZGVvJTJGbXA0In0.V8bpdKyK2z2wlJGL4gJ-LErMFx7qCbGgh3ZMgpng25g" data-canonical-src="https://private-user-images.githubusercontent.com/1636115/579885141-16163c1f-3f59-43de-b8bb-6a4e55f880a8.mp4?jwt=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3NzY0MjgyNzEsIm5iZiI6MTc3NjQyNzk3MSwicGF0aCI6Ii8xNjM2MTE1LzU3OTg4NTE0MS0xNjE2M2MxZi0zZjU5LTQzZGUtYjhiYi02YTRlNTVmODgwYTgubXA0P1gtQW16LUFsZ29yaXRobT1BV1M0LUhNQUMtU0hBMjU2JlgtQW16LUNyZWRlbnRpYWw9QUtJQVZDT0RZTFNBNTNQUUs0WkElMkYyMDI2MDQxNyUyRnVzLWVhc3QtMSUyRnMzJTJGYXdzNF9yZXF1ZXN0JlgtQW16LURhdGU9MjAyNjA0MTdUMTIxMjUxWiZYLUFtei1FeHBpcmVzPTMwMCZYLUFtei1TaWduYXR1cmU9M2EzN2ZmMzcyMDM1MGE4ZDI3M2RlMDA0OTM0MGZiZmVmZmIwNmQ4M2M0NWJmMTkyNjViZDA1MmU0ZGJjNWE3MSZYLUFtei1TaWduZWRIZWFkZXJzPWhvc3QmcmVzcG9uc2UtY29udGVudC10eXBlPXZpZGVvJTJGbXA0In0.V8bpdKyK2z2wlJGL4gJ-LErMFx7qCbGgh3ZMgpng25g" controls="controls" muted="muted" class="d-block rounded-bottom-2 border-top width-fit" style="max-height:640px; min-height: 200px">
 
+  </video>
+
+
+---
+
+## What can you build?
 ### From a napkin idea to a shipped product
 
 Imagine you have an idea for **TripMind** — an AI travel planning SaaS. Here's how copilot-flow takes it from concept to code:
