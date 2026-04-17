@@ -405,6 +405,12 @@ globalHooks.on('post-task', async ctx => console.log('Task done:', ctx.data));
 
 ---
 
+## Future Improvements
+
+- [Memory system improvements](docs/future-improvements/memory.md) — layered injection, BM25 search, importance scoring, upsert dedup, memory types, and more
+
+---
+
 ## Attribution
 
 > copilot-flow is inspired by **[Ruflo (claude-flow)](https://github.com/ruvnet/claude-flow)** — the multi-agent orchestration framework for Claude. copilot-flow brings the same swarm coordination patterns to the GitHub Copilot ecosystem.
