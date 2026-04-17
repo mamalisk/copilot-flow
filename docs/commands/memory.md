@@ -113,10 +113,27 @@ array of `{key, value, tags}` objects — no surrounding text.
 
 ---
 
-## Storage location
+## Storage internals
 
-Memory is persisted in `.copilot-flow/memory.db` (SQLite). The path is configurable in
-`.copilot-flow/config.json` under `memory.path`. The file is created automatically on first use.
+Memory is persisted in `.copilot-flow/memory.db` (SQLite, WAL mode). The path is
+configurable in `.copilot-flow/config.json` under `memory.path`. The file is created
+automatically on first use.
+
+### Upsert semantics
+
+Every `store` call is an **upsert** — if an entry with the same namespace + key already
+exists its value, tags, and TTL are updated in place. No duplicate rows accumulate.
+
+This means re-running a phase or agent with `--memory-namespace` is safe: distilled facts
+from the second run overwrite the facts from the first run under the same keys, rather than
+creating a growing pile of near-identical entries.
+
+### TTL and expiry
+
+Expired entries are filtered out of all read queries in SQL, so they are invisible
+immediately after expiry without any cleanup pass. Physical row deletion (to reclaim disk
+space) happens on the **write path** — at most once per minute — so reads are never
+penalised by a silent `DELETE` before every query.
 
 ---
 

@@ -11,21 +11,18 @@ Items are ordered by implementation priority — lowest-effort, highest-impact f
 
 ---
 
-## 1. Upsert dedup instead of append
+## ✅ 1. Upsert dedup instead of append
 
-**Current behaviour**: every distillation run appends new facts. Re-running the same phase
-twice silently accumulates duplicate or near-duplicate entries under different row IDs.
+> **Implemented** — `store()` in `src/memory/store.ts` uses `ON CONFLICT(namespace, key) DO UPDATE SET`,
+> a full SQL upsert. Re-running the same phase updates facts in place; no duplicate rows accumulate.
+> Documented in [docs/commands/memory.md](../commands/memory.md#upsert-semantics).
 
-**Problem**: `memory list` grows unbounded across re-runs. The 50-entry cap in
-`buildMemoryContext` means older (possibly more important) facts are crowded out by
-duplicates of the same recent output.
+~~Every distillation run appended new facts. Re-running the same phase twice silently
+accumulated duplicate or near-duplicate entries under different row IDs.~~
 
-**Inspiration**: mempalace `dedup.py` — vector-similarity dedup across same-source drawers.
-
-**Proposal**: before storing a new distilled fact in `distill.ts`, check whether an entry
-with the same `contextKey:fact.key` already exists in the namespace. If it does, update its
-`value`, `tags`, and `expires_at` in place instead of inserting a new row. The SQLite schema
-already has a `UNIQUE (namespace, key)` index — `INSERT OR REPLACE` is sufficient.
+**What was confirmed**: the schema carries a `UNIQUE (namespace, key)` index and every
+`store()` call is an upsert — distilled facts from re-runs overwrite the previous values
+under the same keys rather than creating new rows.
 
 ---
 
@@ -73,20 +70,19 @@ Tags are already stored in SQLite — this is entirely a read-path change.
 
 ---
 
-## 4. Move TTL pruning off the read path
+## ✅ 4. Move TTL pruning off the read path
 
-**Current behaviour**: `_pruneExpired()` is called inside every `retrieve()`, `search()`,
-and `list()` call, executing a `DELETE` statement synchronously before every read.
+> **Implemented** — `_pruneExpired()` removed from `retrieve()`, `search()`, and `list()`.
+> Replaced with `_pruneExpiredIfDue()` on the `store()` write path, throttled to at most once
+> per 60 seconds. Read methods already filter expired rows in SQL (`expires_at IS NULL OR expires_at > ?`)
+> so correctness is unaffected. Documented in [docs/commands/memory.md](../commands/memory.md#ttl-and-expiry).
 
-**Problem**: on namespaces with many entries this adds a hidden write penalty to every
-memory read. Under load (parallel phases all reading memory) this serialises against
-SQLite's write lock.
+~~`_pruneExpired()` was called inside every `retrieve()`, `search()`, and `list()` call,
+executing a `DELETE` statement synchronously before every read. Under load (parallel phases
+all reading memory) this serialised against SQLite's write lock.~~
 
-**Proposal**: remove `_pruneExpired()` from the read path. Call it:
-- After every `store()` call (write-time cleanup is cheap — only one row just landed)
-- Or on a lazy timer: once per process, at most every 60 seconds
-
-This keeps the store clean without taxing reads.
+**What changed**: pruning now runs on the write path only, throttled to once per minute.
+A burst of 10 distilled facts stores at most one `DELETE` pass total.
 
 ---
 
@@ -190,13 +186,13 @@ copilot-flow memory identity   # (new subcommand, analogous to `memory prime`)
 
 ## Priority summary
 
-| # | Item | Effort | Impact | Depends on |
-|---|------|--------|--------|-----------|
-| 1 | Upsert dedup | XS | High | — |
-| 2 | Importance scoring | S | High | — |
-| 3 | Tag filtering in injection | S | Medium | — |
-| 4 | Move pruning off read path | XS | Medium | — |
-| 5 | BM25 search | M | Medium | — |
-| 6 | Layered injection | M | High | #2 |
-| 7 | Memory types | S | Medium | — |
-| 8 | Project identity block | S | Medium | — |
+| # | Item | Effort | Impact | Depends on | Status |
+|---|------|--------|--------|-----------|--------|
+| 1 | Upsert dedup | XS | High | — | ✅ Done |
+| 2 | Importance scoring | S | High | — | Pending |
+| 3 | Tag filtering in injection | S | Medium | — | Pending |
+| 4 | Move pruning off read path | XS | Medium | — | ✅ Done |
+| 5 | BM25 search | M | Medium | — | Pending |
+| 6 | Layered injection | M | High | #2 | Pending |
+| 7 | Memory types | S | Medium | — | Pending |
+| 8 | Project identity block | S | Medium | — | Pending |
