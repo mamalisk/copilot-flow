@@ -114,31 +114,26 @@ Pure TypeScript, no external dependencies, no embeddings required. This makes
 
 ---
 
-## 6. Layered injection with token budget
+## ✅ 6. Layered injection with token budget
 
-**Current behaviour**: `buildMemoryContext` injects up to 50 facts unconditionally
-before every phase/agent/swarm task. No token awareness. Large namespaces can bloat
-prompts significantly.
+> **Implemented** — `buildMemoryContext` now uses a two-tier char-budgeted algorithm.
+> Tier 1 (wake-up): top facts by `importance DESC`, hard-capped at `WAKE_UP_CHAR_CAP`
+> (3,200 chars ≈ 800 tokens), always injected. Tier 2 (topic): tag-filtered entries
+> not already in the wake-up block, appended until `TOTAL_CHAR_CAP` (4,800 chars ≈
+> 1,200 tokens). Both constants are exported for tests. The flat `MAX_ENTRIES = 50`
+> limit is removed. 11 new tests in `tests/memory/inject.test.ts`.
 
-**Problem**: all 50 facts injected regardless of importance or relevance. Older, less
-important facts consume context that should be reserved for the task itself.
+~~**Current behaviour**: `buildMemoryContext` injects up to 50 facts unconditionally~~
+~~before every phase/agent/swarm task. No token awareness.~~
 
-**Inspiration**: mempalace `layers.py` — a 4-layer stack with a fixed wake-up budget:
-- L0 (~100 tokens): always loaded, static identity block
-- L1 (~500–800 tokens): auto-generated from top-importance facts, hard-capped
-- L2 (~200–500 tokens per call): loaded only when a matching topic comes up
-- L3: deep semantic search on explicit demand
-
-**Proposal** (depends on #2 importance scoring being in place):
-
-Split `buildMemoryContext` into two tiers:
-- **Wake-up context** (always injected): top-N facts by `importance DESC`, hard-capped
-  at 800 tokens (~3,200 chars). Always included.
-- **Topic context** (injected when tags match): facts whose tags intersect the current
-  phase's `agentType` or `contextTags`. Fetched separately and appended after the
-  wake-up block.
-
-The combined result stays within a configurable token cap (default 1,200 tokens).
+**What changed**:
+- Removed flat `MAX_ENTRIES = 50` limit
+- Tier 1 (wake-up): iterates `store.list(namespace)` (importance DESC) and accumulates
+  entries until `WAKE_UP_CHAR_CAP = 3_200` chars is reached — always injected
+- Tier 2 (topic): only when `filterTags` is set; iterates tag-filtered results, skips
+  entries already in the wake-up set, accumulates until `TOTAL_CHAR_CAP = 4_800` chars
+- `buildMemoryContext` gains an optional `store?` parameter for test dependency injection
+- `WAKE_UP_CHAR_CAP` and `TOTAL_CHAR_CAP` exported from `inject.ts`
 
 ---
 
@@ -198,6 +193,6 @@ copilot-flow memory identity   # (new subcommand, analogous to `memory prime`)
 | 3 | Tag filtering in injection | S | Medium | — | ✅ Done |
 | 4 | Move pruning off read path | XS | Medium | — | ✅ Done |
 | 5 | BM25 search | M | Medium | — | Pending |
-| 6 | Layered injection | M | High | #2 | Pending |
+| 6 | Layered injection | M | High | #2 | ✅ Done |
 | 7 | Memory types | S | Medium | — | Pending |
 | 8 | Project identity block | S | Medium | — | Pending |

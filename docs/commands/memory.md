@@ -165,6 +165,21 @@ immediately after expiry without any cleanup pass. Physical row deletion (to rec
 space) happens on the **write path** — at most once per minute — so reads are never
 penalised by a silent `DELETE` before every query.
 
+### Layered injection
+
+When memory is injected into a prompt, facts are chosen in two passes:
+
+| Tier | What | Cap |
+|------|------|-----|
+| **Wake-up** | Top facts by `importance DESC`, all tags, always included | 3,200 chars (≈ 800 tokens) |
+| **Topic** | Tag-filtered facts (`contextTags`) not already in wake-up | 4,800 chars combined (≈ 1,200 tokens total) |
+
+Facts with importance ≥ 4 receive an `(importance: N)` badge in the prompt so the model
+can weigh them appropriately.
+
+If a namespace has fewer facts than the caps, all of them are included — the caps only
+kick in when the namespace grows large.
+
 ---
 
 ## Example: persist context across runs
