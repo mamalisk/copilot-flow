@@ -8,6 +8,10 @@
  * The distillation prompt is loaded from `.github/memory-prompt.md` if it exists,
  * otherwise the built-in prompt is used. This lets teams customise what gets extracted.
  *
+ * Facts flagged with `"lesson": true` (importance 4-5 patterns/pitfalls/constraints)
+ * are additionally written to .github/lessons/<agentType>.md with no TTL — they survive
+ * namespace clears and TTL expiry, and are injected into all future runs for that agent.
+ *
  * Failures are always swallowed — distillation is best-effort and must never block
  * the main pipeline.
  */
@@ -15,6 +19,7 @@
 import { existsSync, readFileSync } from 'fs';
 import { runAgentTask } from '../agents/executor.js';
 import { getMemoryStore } from './store.js';
+import { appendLesson } from './inject.js';
 import { output as log } from '../output.js';
 
 const DISTILL_PROMPT_FILE = '.github/memory-prompt.md';
@@ -28,12 +33,14 @@ Rules:
 - Values must be 1–2 sentences maximum
 - Use tags from this set: decision | constraint | requirement | architecture | code | api | config
 - Assign importance 1–5: 5=critical (architecture/security decisions), 4=important (key design choices), 3=notable (standard facts), 2=minor (supporting details), 1=trivial
+- If a fact is a cross-session lesson (a pattern, pitfall, or key constraint worth remembering in ALL future runs), add "lesson": true — reserve this for importance 4–5 facts only. Omit the field otherwise.
 - Output ONLY a JSON array — no surrounding text, no markdown fences
 
 Example output:
 [
-  {"key":"auth-strategy","value":"JWT with 15-min expiry, no refresh tokens","tags":["decision","architecture"],"importance":5},
-  {"key":"database","value":"PostgreSQL 16, repository pattern, no ORM","tags":["architecture","constraint"],"importance":4}
+  {"key":"auth-strategy","value":"JWT with 15-min expiry, no refresh tokens","tags":["decision","architecture"],"importance":5,"lesson":true},
+  {"key":"database","value":"PostgreSQL 16, repository pattern, no ORM","tags":["architecture","constraint"],"importance":4},
+  {"key":"db-pool-size","value":"Connection pool set to 20","tags":["config"],"importance":2}
 ]
 
 Output to distil:
@@ -51,6 +58,7 @@ interface DistilledFact {
   value: string;
   tags?: string[];
   importance?: number;
+  lesson?: boolean;
 }
 
 /**
@@ -58,7 +66,7 @@ interface DistilledFact {
  * A non-greedy regex like /\[[\s\S]*?\]/ would match the first *inner*
  * array (e.g. a tags array ["code"]) rather than the outer facts array.
  */
-function extractOutermostArray(text: string): string | null {
+export function extractOutermostArray(text: string): string | null {
   const start = text.indexOf('[');
   if (start === -1) return null;
   let depth = 0;
@@ -80,6 +88,8 @@ function extractOutermostArray(text: string): string | null {
  * @param contextKey  Prefix for each stored key (e.g. "phase:research", "task:task-2").
  * @param model       Model to use for the distillation call.
  * @param ttlMs       Time-to-live for stored facts (default: 30 days).
+ * @param agentType   Agent type that produced the output — used to scope lesson files.
+ *                    Defaults to '_global' (cross-agent lessons file).
  */
 export async function distillToMemory(
   output: string,
@@ -87,6 +97,7 @@ export async function distillToMemory(
   contextKey: string,
   model: string,
   ttlMs = 30 * 24 * 60 * 60 * 1000,
+  agentType = '_global',
 ): Promise<void> {
   try {
     const prompt = loadDistillPrompt() + output;
@@ -105,16 +116,30 @@ export async function distillToMemory(
     const store = getMemoryStore();
     for (const fact of facts) {
       if (typeof fact.key !== 'string' || typeof fact.value !== 'string') continue;
+
+      const isLesson = fact.lesson === true;
+      const importance = typeof fact.importance === 'number' ? fact.importance : undefined;
+
       store.store(
         namespace,
         `${contextKey}:${fact.key}`,
         fact.value,
         {
-          ttlMs,
-          tags: Array.isArray(fact.tags) ? fact.tags : [],
-          importance: typeof fact.importance === 'number' ? fact.importance : undefined,
+          // Lessons are stored permanently (no TTL) so they survive namespace clears
+          ttlMs: isLesson ? undefined : ttlMs,
+          tags: [
+            ...(Array.isArray(fact.tags) ? fact.tags : []),
+            ...(isLesson ? ['lesson'] : []),
+          ],
+          importance,
+          type: isLesson ? 'decision' : undefined,
         },
       );
+
+      // Promote to permanent lesson file — survives TTL and memory clear
+      if (isLesson) {
+        appendLesson(agentType, `${contextKey}:${fact.key}`, fact.value);
+      }
     }
   } catch (err) {
     // Best-effort: distillation failures must never interrupt the main pipeline

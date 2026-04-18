@@ -7,7 +7,7 @@ import { runAgentTask } from '../agents/executor.js';
 import { hooks } from '../hooks/executor.js';
 import { getMemoryStore } from '../memory/store.js';
 import { distillToMemory } from '../memory/distill.js';
-import { buildMemoryContext, loadIdentityContent } from '../memory/inject.js';
+import { buildMemoryContext, loadIdentityContent, loadLessonsContent, appendLesson } from '../memory/inject.js';
 import { output, agentBadge, generateAgentName } from '../output.js';
 import type { SwarmTask, SwarmTopology, AgentResult } from '../types.js';
 
@@ -84,8 +84,11 @@ async function runSequential(
 ): Promise<void> {
   const mem = getMemoryStore();
   const identity = options.memoryNamespace ? loadIdentityContent() : '';
-  const memCtx = options.memoryNamespace ? buildMemoryContext(options.memoryNamespace, undefined, undefined, identity) : '';
   for (const task of tasks) {
+    const lessons = options.memoryNamespace ? loadLessonsContent(task.agentType) : '';
+    const memCtx = options.memoryNamespace
+      ? buildMemoryContext(options.memoryNamespace, undefined, undefined, identity, lessons)
+      : '';
     output.info(`${agentBadge(task.agentType)} ${task.id} — ${taskDescription(task)}`);
     const result = await runAgentTask(task.agentType, memCtx + buildPrompt(task, results, mem, ns), {
       retryConfig: task.retryConfig,
@@ -100,8 +103,14 @@ async function runSequential(
       mem.store(ns, `task:${task.id}:result`, result.output, { ttlMs: 60 * 60 * 1000 });
       if (options.memoryNamespace) {
         const model = task.sessionOptions?.model ?? '';
-        await distillToMemory(result.output, options.memoryNamespace, `task:${task.id}`, model);
+        await distillToMemory(result.output, options.memoryNamespace, `task:${task.id}`, model, undefined, task.agentType);
       }
+    } else if (options.memoryNamespace) {
+      appendLesson(
+        task.agentType,
+        `swarm-failure:${task.id}`,
+        `Swarm task "${task.id}" (${task.agentType}) failed: ${result.error ?? 'unknown error'}.`,
+      );
     }
   }
 }
@@ -118,7 +127,6 @@ async function runHierarchical(
 ): Promise<void> {
   const mem = getMemoryStore();
   const identity = options.memoryNamespace ? loadIdentityContent() : '';
-  const memCtx = options.memoryNamespace ? buildMemoryContext(options.memoryNamespace, undefined, undefined, identity) : '';
   const remaining = [...tasks];
 
   while (remaining.length > 0) {
@@ -143,16 +151,21 @@ async function runHierarchical(
     }
 
     const waveResults = await Promise.all(
-      ready.map(task =>
-        runAgentTask(task.agentType, memCtx + buildPrompt(task, results, mem, ns), {
+      ready.map(async task => {
+        const lessons = options.memoryNamespace ? loadLessonsContent(task.agentType) : '';
+        const memCtx = options.memoryNamespace
+          ? buildMemoryContext(options.memoryNamespace, undefined, undefined, identity, lessons)
+          : '';
+        const result = await runAgentTask(task.agentType, memCtx + buildPrompt(task, results, mem, ns), {
           retryConfig: task.retryConfig,
           ...task.sessionOptions,
           label: agentLabel(task),
           onChunk: options.onProgress
             ? chunk => options.onProgress!(task.id, task.agentType, chunk)
             : undefined,
-        }).then(r => ({ task, result: r }))
-      )
+        });
+        return { task, result };
+      })
     );
 
     for (const { task, result } of waveResults) {
@@ -162,8 +175,14 @@ async function runHierarchical(
         mem.store(ns, `task:${task.id}:result`, result.output, { ttlMs: 60 * 60 * 1000 });
         if (options.memoryNamespace) {
           const model = task.sessionOptions?.model ?? '';
-          await distillToMemory(result.output, options.memoryNamespace, `task:${task.id}`, model);
+          await distillToMemory(result.output, options.memoryNamespace, `task:${task.id}`, model, undefined, task.agentType);
         }
+      } else if (options.memoryNamespace) {
+        appendLesson(
+          task.agentType,
+          `swarm-failure:${task.id}`,
+          `Swarm task "${task.id}" (${task.agentType}) failed: ${result.error ?? 'unknown error'}.`,
+        );
       }
     }
   }
@@ -178,22 +197,26 @@ async function runMesh(
 ): Promise<void> {
   const mem = getMemoryStore();
   const identity = options.memoryNamespace ? loadIdentityContent() : '';
-  const memCtx = options.memoryNamespace ? buildMemoryContext(options.memoryNamespace, undefined, undefined, identity) : '';
   output.info(`Running all ${tasks.length} tasks concurrently (mesh):`);
   for (const t of tasks) {
     output.dim(`  ${agentBadge(t.agentType)} ${t.id} — ${taskDescription(t)}`);
   }
   const settled = await Promise.allSettled(
-    tasks.map(task =>
-      runAgentTask(task.agentType, memCtx + buildPrompt(task, results, mem, ns), {
+    tasks.map(async task => {
+      const lessons = options.memoryNamespace ? loadLessonsContent(task.agentType) : '';
+      const memCtx = options.memoryNamespace
+        ? buildMemoryContext(options.memoryNamespace, undefined, undefined, identity, lessons)
+        : '';
+      const result = await runAgentTask(task.agentType, memCtx + buildPrompt(task, results, mem, ns), {
         retryConfig: task.retryConfig,
         ...task.sessionOptions,
         label: agentLabel(task),
         onChunk: options.onProgress
           ? chunk => options.onProgress!(task.id, task.agentType, chunk)
           : undefined,
-      }).then(r => ({ task, result: r }))
-    )
+      });
+      return { task, result };
+    })
   );
 
   for (const s of settled) {
@@ -204,8 +227,14 @@ async function runMesh(
         mem.store(ns, `task:${task.id}:result`, result.output, { ttlMs: 60 * 60 * 1000 });
         if (options.memoryNamespace) {
           const model = task.sessionOptions?.model ?? '';
-          await distillToMemory(result.output, options.memoryNamespace, `task:${task.id}`, model);
+          await distillToMemory(result.output, options.memoryNamespace, `task:${task.id}`, model, undefined, task.agentType);
         }
+      } else if (options.memoryNamespace) {
+        appendLesson(
+          task.agentType,
+          `swarm-failure:${task.id}`,
+          `Swarm task "${task.id}" (${task.agentType}) failed: ${result.error ?? 'unknown error'}.`,
+        );
       }
     }
   }

@@ -5,8 +5,8 @@
 </p>
 
 <p align="center">
-  <strong>Multi-agent orchestration for GitHub Copilot CLI</strong><br/>
-  From idea to production — one command at a time.
+  <strong>Adaptive multi-agent orchestration for GitHub Copilot CLI</strong><br/>
+  From idea to production — getting smarter with every run.
 </p>
 
 <p align="center">
@@ -20,7 +20,71 @@
 
 copilot-flow lets you orchestrate **fleets of GitHub Copilot agents** that work together — researching, designing, coding, testing, and reviewing — so you can go from a product idea to working software faster than ever before.
 
+Unlike other orchestration tools, copilot-flow **accumulates experience across every run**. Agents learn from their own successes and failures, build up project-specific knowledge, and carry that knowledge into every future session — automatically.
+
 Inspired by [Ruflo (claude-flow)](https://github.com/ruvnet/claude-flow), built on the official [`@github/copilot-sdk`](https://github.com/github/copilot-sdk).
+
+---
+
+## A system that gets smarter with every run
+
+Most orchestration tools start fresh each time. copilot-flow doesn't.
+
+After every phase, agent task, or swarm run, the system **distils what it learned** — key decisions, constraints, patterns, and pitfalls — and stores them for future runs. When something goes wrong and an agent recovers, the recovery strategy becomes a lesson. When an important architectural decision is made, it's retained permanently. Over time, your agents carry institutional project knowledge that no single run could hold.
+
+### Three layers of persistent context
+
+Every agent prompt is built in order:
+
+| Layer | Source | Lifetime |
+|-------|--------|----------|
+| **Project identity** | `.github/memory-identity.md` | Permanent — written once, always present |
+| **Lessons learned** | `.github/lessons/<agentType>.md` + `_global.md` | Permanent — appended automatically as agents run |
+| **Remembered context** | SQLite memory (importance-ranked, BM25-searched) | 30-day TTL, refreshed on every run |
+
+### What gets captured automatically
+
+- **Successful runs** → facts are distilled and stored; high-importance findings (importance 4–5) are additionally promoted to the permanent lessons file for that agent type
+- **Acceptance failures that recover** → the failure reason is written as a permanent lesson so the agent knows what to avoid next time
+- **Swarm task failures** → appended to the failing agent's lesson file  
+- **All-retries-exhausted** → appended to the agent's lesson file
+
+### Lessons are scoped to agent type
+
+A coder's TypeScript patterns don't pollute a security auditor's context. Each agent sees only **its own lessons plus global lessons** — nothing more:
+
+```
+.github/
+  lessons/
+    coder.md            ← only coder agents see this
+    reviewer.md         ← only reviewer agents see this
+    architect.md
+    _global.md          ← all agents see this (cross-cutting lessons)
+```
+
+### Active memory tidying
+
+```bash
+# Consolidate a namespace: deduplicate, merge related facts, promote lessons
+copilot-flow memory lint --namespace my-project
+
+# Preview first
+copilot-flow memory lint --namespace my-project --dry-run
+```
+
+### Agent prompts are yours to edit
+
+Run `copilot-flow init` and every agent gets a `.github/agents/<type>.md` file containing its default system prompt. Edit any file to add project-specific rules — your changes are picked up immediately, no rebuild needed:
+
+```
+.github/
+  agents/
+    coder.md       ← add your stack, coding conventions, type constraints
+    reviewer.md    ← add your review checklist
+    architect.md   ← add your architecture principles
+```
+
+The result: agents that understand your project's conventions from day one, and get progressively better at applying them as they accumulate experience.
 
 ---
 <video src="https://private-user-images.githubusercontent.com/1636115/579885141-16163c1f-3f59-43de-b8bb-6a4e55f880a8.mp4?jwt=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3NzY0MjgyNzEsIm5iZiI6MTc3NjQyNzk3MSwicGF0aCI6Ii8xNjM2MTE1LzU3OTg4NTE0MS0xNjE2M2MxZi0zZjU5LTQzZGUtYjhiYi02YTRlNTVmODgwYTgubXA0P1gtQW16LUFsZ29yaXRobT1BV1M0LUhNQUMtU0hBMjU2JlgtQW16LUNyZWRlbnRpYWw9QUtJQVZDT0RZTFNBNTNQUUs0WkElMkYyMDI2MDQxNyUyRnVzLWVhc3QtMSUyRnMzJTJGYXdzNF9yZXF1ZXN0JlgtQW16LURhdGU9MjAyNjA0MTdUMTIxMjUxWiZYLUFtei1FeHBpcmVzPTMwMCZYLUFtei1TaWduYXR1cmU9M2EzN2ZmMzcyMDM1MGE4ZDI3M2RlMDA0OTM0MGZiZmVmZmIwNmQ4M2M0NWJmMTkyNjViZDA1MmU0ZGJjNWE3MSZYLUFtei1TaWduZWRIZWFkZXJzPWhvc3QmcmVzcG9uc2UtY29udGVudC10eXBlPXZpZGVvJTJGbXA0In0.V8bpdKyK2z2wlJGL4gJ-LErMFx7qCbGgh3ZMgpng25g" data-canonical-src="https://private-user-images.githubusercontent.com/1636115/579885141-16163c1f-3f59-43de-b8bb-6a4e55f880a8.mp4?jwt=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3NzY0MjgyNzEsIm5iZiI6MTc3NjQyNzk3MSwicGF0aCI6Ii8xNjM2MTE1LzU3OTg4NTE0MS0xNjE2M2MxZi0zZjU5LTQzZGUtYjhiYi02YTRlNTVmODgwYTgubXA0P1gtQW16LUFsZ29yaXRobT1BV1M0LUhNQUMtU0hBMjU2JlgtQW16LUNyZWRlbnRpYWw9QUtJQVZDT0RZTFNBNTNQUUs0WkElMkYyMDI2MDQxNyUyRnVzLWVhc3QtMSUyRnMzJTJGYXdzNF9yZXF1ZXN0JlgtQW16LURhdGU9MjAyNjA0MTdUMTIxMjUxWiZYLUFtei1FeHBpcmVzPTMwMCZYLUFtei1TaWduYXR1cmU9M2EzN2ZmMzcyMDM1MGE4ZDI3M2RlMDA0OTM0MGZiZmVmZmIwNmQ4M2M0NWJmMTkyNjViZDA1MmU0ZGJjNWE3MSZYLUFtei1TaWduZWRIZWFkZXJzPWhvc3QmcmVzcG9uc2UtY29udGVudC10eXBlPXZpZGVvJTJGbXA0In0.V8bpdKyK2z2wlJGL4gJ-LErMFx7qCbGgh3ZMgpng25g" controls="controls" muted="muted" class="d-block rounded-bottom-2 border-top width-fit" style="max-height:640px; min-height: 200px">
@@ -282,7 +346,8 @@ copilot-flow agent spawn \
 | `agent spawn` | Run a single specialist agent | [→ docs/commands/agent.md](docs/commands/agent.md) |
 | `swarm start` | Orchestrate multiple agents | [→ docs/commands/swarm.md](docs/commands/swarm.md) |
 | `plan` / `exec` | Phased multi-swarm pipelines | [→ docs/commands/plan-exec.md](docs/commands/plan-exec.md) |
-| `memory` | Persist context between runs | [→ docs/commands/memory.md](docs/commands/memory.md) |
+| `memory` | Persist and query the knowledge base | [→ docs/commands/memory.md](docs/commands/memory.md) |
+| `memory lint` | LLM-powered dedup, merge, and lesson promotion | [→ docs/commands/memory.md](docs/commands/memory.md#memory-lint) |
 | `doctor` / `init` / `status` | Setup and diagnostics | [→ docs/commands/doctor.md](docs/commands/doctor.md) |
 | `models` | List models available on your Copilot plan | [→ docs/commands/doctor.md](docs/commands/doctor.md) |
 | `hooks` | List and configure hooks | [→ docs/commands/hooks.md](docs/commands/hooks.md) |
@@ -410,9 +475,12 @@ globalHooks.on('post-task', async ctx => console.log('Task done:', ctx.data));
 
 ---
 
-## Future Improvements
+## Memory system
 
-- [Memory system improvements](docs/future-improvements/memory.md) — layered injection, BM25 search, importance scoring, upsert dedup, memory types, and more
+The full memory system — importance scoring, BM25 search, layered injection, TTL management, memory types, project identity, wisdom retention, and `memory lint` — is documented in:
+
+- [docs/commands/memory.md](docs/commands/memory.md) — full command reference and feature guide
+- [docs/future-improvements/memory.md](docs/future-improvements/memory.md) — implementation history and decisions
 
 ---
 

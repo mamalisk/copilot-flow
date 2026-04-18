@@ -82,6 +82,39 @@ Delete all entries in a namespace.
 copilot-flow memory clear --namespace <ns>
 ```
 
+### `memory lint`
+
+LLM-powered consolidation of a namespace. Sends all entries to an analyst agent that
+deduplicates, merges related facts, adjusts importance scores, and flags cross-session
+lessons for promotion to `.github/lessons/_global.md`.
+
+```bash
+copilot-flow memory lint --namespace <ns> [--dry-run] [--model <model>]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--dry-run` | Preview what would change without writing anything |
+| `--model <m>` | Model to use for the lint pass (default: config default) |
+
+The lint prompt instructs the analyst to:
+- Delete true duplicates (same meaning, different wording)
+- Merge related fact pairs into one richer entry
+- Raise importance to 5 for cross-session critical facts
+- Promote entries tagged `['lesson']` or `['error-recovery']` to `.github/lessons/_global.md`
+
+**Tip**: run lint periodically to keep the namespace tidy as facts accumulate across runs.
+
+```bash
+# Preview what would change
+copilot-flow memory lint --namespace my-project --dry-run
+
+# Apply consolidation
+copilot-flow memory lint --namespace my-project
+```
+
+---
+
 ### `memory prime` *(deprecated)*
 
 > **Deprecated** — use `copilot-flow init` instead. `init` creates `.github/memory-prompt.md`,
@@ -197,6 +230,71 @@ Feature branches, PRs require approval, conventional commits
 
 **Size**: keep the file under ~200 words. It is injected on every run; a large identity
 file leaves less room for dynamic facts.
+
+---
+
+## Wisdom retention — how the system learns
+
+copilot-flow retains knowledge from every run in two complementary stores:
+
+| Store | Lifetime | What lives here |
+|-------|----------|-----------------|
+| SQLite (`.copilot-flow/memory.db`) | 30 days TTL (default) | Distilled facts, decisions, context |
+| Lessons markdown (`.github/lessons/`) | Permanent (in git) | Patterns, pitfalls, recovery lessons |
+
+### Automatic learning from successes
+
+After every successful phase/agent/swarm task, the distillation step extracts facts and
+stores them in SQLite. When the analyst flags a fact as `"lesson": true` (reserved for
+importance 4–5 patterns, pitfalls, or key constraints), copilot-flow additionally:
+
+1. Stores it permanently in SQLite with no TTL and `type: 'decision'`
+2. Appends it to `.github/lessons/<agentType>.md` — the per-agent lesson file
+
+The built-in distillation prompt already asks for the `lesson` field. You can customise
+what triggers a lesson in `.github/memory-prompt.md`.
+
+### Automatic learning from errors
+
+When an acceptance check fails N times and passes on retry N+1, copilot-flow records
+the failure reason(s) as a permanent lesson:
+- Written to `.github/lessons/<agentType>.md` immediately
+- Stored in SQLite with `type: 'decision'`, `importance: 4`, tags `['lesson', 'error-recovery']`
+
+When a swarm task or agent run exhausts all retries and fails, the error is also appended
+to the agent's lesson file so future runs know that combination is fragile.
+
+### Per-agent lesson files
+
+```
+.github/
+  lessons/
+    coder.md            ← lessons seen only by coder agents
+    reviewer.md         ← lessons seen only by reviewer agents
+    architect.md
+    ...
+    _global.md          ← lessons injected into ALL agent prompts
+```
+
+Each agent sees its own file **plus** `_global.md`. A coder's TypeScript patterns don't
+pollute a security auditor's context. Files are created by `copilot-flow init` with a
+template header; lessons accumulate as bullet points automatically.
+
+### Prompt injection order
+
+When `--memory-namespace` is active, prompts are built in this order:
+
+```
+## Project identity          ← .github/memory-identity.md (static)
+## Lessons learned           ← .github/lessons/<agentType>.md + _global.md (permanent)
+## Remembered context        ← SQLite facts (wake-up + topic tiers, TTL-bounded)
+```
+
+### Manual lesson promotion via `memory lint`
+
+Run `copilot-flow memory lint --namespace <ns>` at any time to consolidate the SQLite
+store. Entries that the analyst flags as "promote" are written to `.github/lessons/_global.md`
+so they survive future namespace clears.
 
 ---
 

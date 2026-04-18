@@ -1,7 +1,9 @@
 import { Command } from 'commander';
 import { mkdirSync, existsSync, writeFileSync } from 'fs';
 import { getMemoryStore } from '../memory/store.js';
+import { lintMemory } from '../memory/lint.js';
 import { output, printTable } from '../output.js';
+import { loadConfig } from '../config.js';
 import type { MemoryType } from '../types.js';
 
 const MEMORY_PROMPT_FILE = '.github/memory-prompt.md';
@@ -146,6 +148,27 @@ export function registerMemory(program: Command): void {
       const store = getMemoryStore();
       const count = store.clear(opts.namespace);
       output.success(`Cleared ${count} entries from: ${opts.namespace}`);
+    });
+
+  // ── memory lint ───────────────────────────────────────────────────────────
+  memory
+    .command('lint')
+    .description('LLM-powered consolidation: deduplicate, merge, and promote facts in a namespace')
+    .requiredOption('--namespace <ns>', 'Memory namespace to lint')
+    .option('--dry-run', 'Preview changes without writing anything')
+    .option('--model <model>', 'Model to use for the lint pass')
+    .action(async (opts: { namespace: string; dryRun?: boolean; model?: string }) => {
+      const config = loadConfig();
+      const model = opts.model ?? config.defaultModel ?? '';
+      const report = await lintMemory(opts.namespace, model, { dryRun: opts.dryRun });
+      if (opts.dryRun) {
+        output.info('Dry-run complete — no changes written');
+      } else {
+        output.success(
+          `Lint complete: ${report.kept} kept, ${report.deleted} deleted, ` +
+          `${report.merged} merged, ${report.updated} updated, ${report.promoted} promoted`,
+        );
+      }
     });
 
   // ── memory prime (deprecated) ──────────────────────────────────────────────

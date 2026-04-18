@@ -22,7 +22,9 @@ export { runSwarm } from './swarm/coordinator.js';
 // Memory
 export { MemoryStore, getMemoryStore } from './memory/store.js';
 export { distillToMemory } from './memory/distill.js';
-export { buildMemoryContext, loadIdentityContent, IDENTITY_FILE } from './memory/inject.js';
+export { buildMemoryContext, loadIdentityContent, loadLessonsContent, appendLesson, IDENTITY_FILE, LESSONS_DIR } from './memory/inject.js';
+export { lintMemory } from './memory/lint.js';
+export type { LintReport } from './memory/lint.js';
 
 // Hooks
 export { globalHooks, HookRegistry } from './hooks/registry.js';

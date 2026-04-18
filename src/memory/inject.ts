@@ -18,15 +18,24 @@
  *   a stable "## Project identity" section before the dynamic facts block.
  *   Use loadIdentityContent() and pass the result as identityContent to
  *   buildMemoryContext — this keeps the function pure and testable.
+ *
+ * Lessons learned block:
+ *   If .github/lessons/<agentType>.md or .github/lessons/_global.md exists,
+ *   their content is injected as "## Lessons learned" between identity and facts.
+ *   Use loadLessonsContent(agentType) and pass the result as lessonsContent.
+ *   Use appendLesson(agentType, key, value) to write a lesson from any run mode.
  */
 
-import { existsSync, readFileSync } from 'fs';
+import { existsSync, readFileSync, appendFileSync, mkdirSync } from 'fs';
 import path from 'path';
 import type { MemoryEntry } from '../types.js';
 import { getMemoryStore, MemoryStore } from './store.js';
 
 /** Path to the project identity file, relative to cwd. */
 export const IDENTITY_FILE = '.github/memory-identity.md';
+
+/** Directory containing per-agent and global lesson files, relative to cwd. */
+export const LESSONS_DIR = '.github/lessons';
 
 /**
  * Read the project identity file (.github/memory-identity.md) from cwd.
@@ -37,6 +46,50 @@ export function loadIdentityContent(cwd = process.cwd()): string {
   const filePath = path.join(cwd, IDENTITY_FILE);
   if (!existsSync(filePath)) return '';
   return readFileSync(filePath, 'utf-8').trim();
+}
+
+/**
+ * Read lessons for a specific agent type.
+ * Combines .github/lessons/<agentType>.md (agent-specific) and
+ * .github/lessons/_global.md (cross-agent), stripping HTML comments.
+ *
+ * Returns trimmed combined content, or an empty string if neither file exists.
+ * Pass the result as `lessonsContent` to buildMemoryContext.
+ */
+export function loadLessonsContent(agentType: string, cwd = process.cwd()): string {
+  const dir = path.join(cwd, LESSONS_DIR);
+  const parts: string[] = [];
+  for (const filename of [`${agentType}.md`, '_global.md']) {
+    const filePath = path.join(dir, filename);
+    if (!existsSync(filePath)) continue;
+    const raw = readFileSync(filePath, 'utf-8');
+    // Strip HTML comment blocks (template headers written by init)
+    const content = raw.replace(/<!--[\s\S]*?-->/g, '').trim();
+    if (content) parts.push(content);
+  }
+  return parts.join('\n');
+}
+
+/**
+ * Append a lesson entry to .github/lessons/<agentType>.md (synchronous).
+ * Creates the directory and file if they do not exist.
+ * Use agentType = '_global' for cross-agent lessons.
+ *
+ * Lessons written here survive TTL expiry and memory clear operations.
+ * They are injected into every future run for that agent type automatically.
+ */
+export function appendLesson(
+  agentType: string,
+  key: string,
+  value: string,
+  cwd = process.cwd(),
+): void {
+  const dir = path.join(cwd, LESSONS_DIR);
+  mkdirSync(dir, { recursive: true });
+  const filePath = path.join(dir, `${agentType}.md`);
+  const date = new Date().toISOString().slice(0, 10);
+  const line = `- **${key}**: ${value} *(${date})*\n`;
+  appendFileSync(filePath, line, 'utf-8');
 }
 
 /** Wake-up tier hard cap in characters (~800 tokens). */
@@ -60,6 +113,8 @@ function formatEntry(e: MemoryEntry): string {
  *                        Pass an explicit instance in tests to avoid the singleton.
  * @param identityContent Content of .github/memory-identity.md (call loadIdentityContent()).
  *                        When non-empty, prepended as "## Project identity" before facts.
+ * @param lessonsContent  Content from loadLessonsContent(agentType).
+ *                        When non-empty, injected as "## Lessons learned" after identity.
  * @returns A markdown section string, or empty string if no content exists.
  */
 export function buildMemoryContext(
@@ -67,6 +122,7 @@ export function buildMemoryContext(
   filterTags?: string[],
   store?: MemoryStore,
   identityContent?: string,
+  lessonsContent?: string,
 ): string {
   const s = store ?? getMemoryStore();
 
@@ -110,6 +166,9 @@ export function buildMemoryContext(
   const sections: string[] = [];
   if (identityContent) {
     sections.push(`## Project identity\n${identityContent}`);
+  }
+  if (lessonsContent) {
+    sections.push(`## Lessons learned\n${lessonsContent}`);
   }
   if (allLines.length > 0) {
     sections.push(`## Remembered context\n${allLines.join('\n')}`);

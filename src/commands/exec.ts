@@ -10,7 +10,8 @@ import { output, agentBadge, generateAgentName } from '../output.js';
 import { loadConfig } from '../config.js';
 import { clientManager } from '../core/client-manager.js';
 import { distillToMemory } from '../memory/distill.js';
-import { buildMemoryContext, loadIdentityContent } from '../memory/inject.js';
+import { buildMemoryContext, loadIdentityContent, loadLessonsContent, appendLesson } from '../memory/inject.js';
+import { getMemoryStore } from '../memory/store.js';
 import type { Plan, PlanPhase, SwarmTask, AgentType, CopilotFlowConfig } from '../types.js';
 import type { CustomAgentConfig } from '@github/copilot-sdk';
 
@@ -215,11 +216,19 @@ async function runPhase(
   const maxRetries = phase.maxAcceptanceRetries ?? globalMaxRetries;
   let attempt = 0;
   let phaseOutput = '';
+  const failReasons: string[] = [];
 
   // Inject memories from prior runs (prepended once — not inside the retry loop).
   // contextTags narrows the injected facts to those matching the phase's tag filter.
+  const phaseAgentType = phase.agentType ?? 'analyst';
   const memoryContext = sessionExts.memoryNamespace
-    ? buildMemoryContext(sessionExts.memoryNamespace, phase.contextTags, undefined, loadIdentityContent())
+    ? buildMemoryContext(
+        sessionExts.memoryNamespace,
+        phase.contextTags,
+        undefined,
+        loadIdentityContent(),
+        loadLessonsContent(phaseAgentType),
+      )
     : '';
 
   while (attempt <= maxRetries) {
@@ -299,9 +308,24 @@ async function runPhase(
 
     if (check.pass) {
       output.dim(`  [${phase.id}] Acceptance: PASS`);
+      // Record a lesson when prior attempts failed — the failure reason is the lesson
+      if (failReasons.length > 0 && sessionExts.memoryNamespace) {
+        const summary = failReasons.slice(0, 3).join(' | ');
+        const lessonValue =
+          `Phase "${phase.id}" required ${failReasons.length} retry attempt(s). ` +
+          `Acceptance failure(s): ${summary}`;
+        appendLesson(phaseAgentType, `recovery:${phase.id}`, lessonValue);
+        getMemoryStore().store(
+          sessionExts.memoryNamespace,
+          `lesson:${phase.id}:recovery`,
+          lessonValue,
+          { type: 'decision', importance: 4, tags: ['lesson', 'error-recovery'] },
+        );
+      }
       break;
     }
 
+    failReasons.push(check.reason ?? 'no reason given');
     attempt++;
     if (attempt > maxRetries) {
       throw new Error(
@@ -318,9 +342,9 @@ async function runPhase(
 
   // Distil key facts into memory (best-effort, fires after phase is written to disk)
   if (sessionExts.memoryNamespace) {
-    const distilModel = resolveModel(phase.agentType ?? 'analyst', phase, cliModel, config);
+    const distilModel = resolveModel(phaseAgentType, phase, cliModel, config);
     output.dim(`  [${phase.id}] Distilling to memory (namespace: ${sessionExts.memoryNamespace})…`);
-    await distillToMemory(phaseOutput, sessionExts.memoryNamespace, `phase:${phase.id}`, distilModel);
+    await distillToMemory(phaseOutput, sessionExts.memoryNamespace, `phase:${phase.id}`, distilModel, undefined, phaseAgentType);
   }
 
   return { id: phase.id, output: phaseOutput, outFile, skipped: false };

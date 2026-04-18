@@ -12,6 +12,7 @@ import { withRetry, RetryPredicates } from '../core/retry.js';
 import { classifyError } from '../core/error-handler.js';
 import { output } from '../output.js';
 import { getAgentDefinition } from './registry.js';
+import { appendLesson } from '../memory/inject.js';
 import type { AgentType, AgentResult } from '../types.js';
 import type { RetryConfig } from '../core/retry.js';
 
@@ -225,6 +226,12 @@ export async function runAgentTask(
   } catch (err) {
     const classified = classifyError(err);
     output.error(`[${displayLabel}] Failed after ${attempts} attempt(s): ${classified.message}`);
+    // Record a permanent lesson so future runs know this agent/task combination fails
+    appendLesson(
+      agentType,
+      `agent-failure:${agentType}-${Date.now()}`,
+      `Agent "${agentType}" exhausted ${attempts} retry attempt(s): ${classified.message}`,
+    );
     if (classified.category === 'authentication') {
       output.dim('  → On enterprise/managed Macs: set GITHUB_TOKEN or GH_TOKEN to skip keychain');
       output.dim('  →   export GITHUB_TOKEN=<your-pat>   # GitHub PAT with Copilot access');

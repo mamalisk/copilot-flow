@@ -1,0 +1,1 @@
+- **agent-failure:coder-1776495385861**: Agent "coder" exhausted 2 retry attempt(s): ECONNRESET *(2026-04-18)*

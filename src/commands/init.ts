@@ -8,6 +8,8 @@ import type { AgentType } from '../types.js';
 
 const GITHUB_DIR       = '.github';
 const AGENTS_DIR       = '.github/agents';
+const LESSONS_DIR      = '.github/lessons';
+const SKILLS_DIR       = '.github/skills';
 const IDENTITY_FILE    = '.github/memory-identity.md';
 const MEMORY_PROMPT    = '.github/memory-prompt.md';
 
@@ -54,6 +56,46 @@ Example output:
 ]
 
 Output to distil:
+`;
+
+/** Template header for per-agent lesson files. */
+function agentLessonTemplate(agentType: string): string {
+  return `<!-- Lessons learned by the "${agentType}" agent across all runs.
+     This file is updated automatically by copilot-flow when agents discover
+     patterns, pitfalls, or important constraints during execution.
+     You can also add lessons manually using the bullet format below.
+     Injected into every "${agentType}" agent prompt as "## Lessons learned".
+     Run: copilot-flow memory lint --namespace <ns> --promote  to promote facts here. -->
+`;
+}
+
+const GLOBAL_LESSON_TEMPLATE = `<!-- Cross-agent lessons — injected into ALL agent prompts as "## Lessons learned".
+     Promoted here via: copilot-flow memory lint --namespace <ns> (promote action).
+     Add lessons manually in bullet format:
+     - **topic**: description *(YYYY-MM-DD)* -->
+`;
+
+const SKILL_TEMPLATE = `# Skills
+
+<!--
+  This directory contains SKILL.md files that agents can invoke as tools.
+  Each skill file describes a repeatable procedure the agent can follow.
+
+  Format: each file should have a YAML frontmatter block followed by markdown body.
+
+  Example — .github/skills/deploy-staging.md:
+  ---
+  name: deploy-staging
+  description: Deploy the current branch to the staging environment
+  ---
+  1. Run: npm run build
+  2. Run: npm run deploy:staging
+  3. Verify at https://staging.example.com
+  4. Post result to #deployments Slack channel
+
+  Register skill directories with:
+    copilot-flow exec plan.yaml --skill-dir .github/skills
+-->
 `;
 
 /** Write a file only if it does not already exist. Returns true when written. */
@@ -133,6 +175,33 @@ export function registerInit(program: Command): void {
         output.dim(`  Skipped agent prompts in ${AGENTS_DIR}/ (already exist)`);
       }
 
+      // ── Lessons files ──────────────────────────────────────────────────────
+      fs.mkdirSync(LESSONS_DIR, { recursive: true });
+      let lessonsCreated = 0;
+      for (const type of Object.keys(AGENT_REGISTRY) as AgentType[]) {
+        const filePath = path.join(LESSONS_DIR, `${type}.md`);
+        if (writeIfAbsent(filePath, agentLessonTemplate(type))) {
+          lessonsCreated++;
+        }
+      }
+      if (writeIfAbsent(path.join(LESSONS_DIR, '_global.md'), GLOBAL_LESSON_TEMPLATE)) {
+        lessonsCreated++;
+      }
+      if (lessonsCreated > 0) {
+        output.dim(`  Created ${lessonsCreated} lesson file(s) in ${LESSONS_DIR}/`);
+        output.dim('  Lessons are written here automatically as agents learn from runs');
+      } else {
+        output.dim(`  Skipped lesson files in ${LESSONS_DIR}/ (already exist)`);
+      }
+
+      // ── Skills scaffold ────────────────────────────────────────────────────
+      fs.mkdirSync(SKILLS_DIR, { recursive: true });
+      if (writeIfAbsent(path.join(SKILLS_DIR, 'README.md'), SKILL_TEMPLATE)) {
+        output.dim(`  Created ${SKILLS_DIR}/README.md — add SKILL.md files here`);
+      } else {
+        output.dim(`  Skipped ${SKILLS_DIR}/ (already exists)`);
+      }
+
       output.success('Initialised copilot-flow');
       output.blank();
       output.print('  Config:   .copilot-flow/config.json');
@@ -140,6 +209,8 @@ export function registerInit(program: Command): void {
       output.print('  Identity: .github/memory-identity.md');
       output.print('  Prompts:  .github/memory-prompt.md');
       output.print('  Agents:   .github/agents/');
+      output.print('  Lessons:  .github/lessons/');
+      output.print('  Skills:   .github/skills/');
       output.print('  Plans:    .copilot-flow/plans/');
       output.blank();
       output.dim('Next: copilot-flow agent spawn --type coder --task "Your task"');
