@@ -20,6 +20,8 @@ export const AGENT_TYPE_LIST = [
   'optimizer',
   'security-auditor',
   'performance-engineer',
+  'orchestrator',
+  'product-manager',
 ] as const;
 
 export type AgentType = (typeof AGENT_TYPE_LIST)[number];

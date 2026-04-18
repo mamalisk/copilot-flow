@@ -114,7 +114,7 @@ phases:
 | `id` | ✓ | Unique kebab-case identifier, used as default output filename |
 | `description` | ✓ | What this phase should produce |
 | `type` | ✓ | `agent` (single specialist) or `swarm` (multi-agent pipeline) |
-| `agentType` | agent phases | One of the 12 built-in agent types |
+| `agentType` | agent phases | One of the 14 built-in agent types (coder, researcher, tester, reviewer, architect, coordinator, analyst, debugger, documenter, optimizer, security-auditor, performance-engineer, orchestrator, product-manager) |
 | `topology` | swarm phases | `hierarchical` \| `sequential` \| `mesh` |
 | `agents` | swarm phases | List of agent types forming the pipeline |
 | `subTasks` | swarm + mesh + duplicate agents | Per-agent task descriptions (see [Parallel agent orchestration](#parallel-agent-orchestration)) |
