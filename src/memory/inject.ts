@@ -84,6 +84,7 @@ export function appendLesson(
   value: string,
   cwd = process.cwd(),
 ): void {
+  if (process.env.VITEST || process.env.NODE_ENV === 'test') return;
   const dir = path.join(cwd, LESSONS_DIR);
   mkdirSync(dir, { recursive: true });
   const filePath = path.join(dir, `${agentType}.md`);

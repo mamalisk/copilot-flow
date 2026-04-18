@@ -30,16 +30,18 @@ jobs:
 
       - run: npm ci
       - run: npm test
+        env:
+          NODE_ENV: test
+
+      - name: Ensure working tree is clean
+        run: |
+          git status --porcelain
+          test -z "$(git status --porcelain)"
 
       - name: Configure git identity
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-
-      - name: Commit lockfile changes if any
-        run: |
-          git add package-lock.json || true
-          git diff --cached --exit-code || git commit -m "chore: sync package-lock.json [skip ci]"
 
       - name: Bump version
         run: |
