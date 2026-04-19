@@ -245,7 +245,19 @@ copilot-flow doctor   # checks everything for you
 
 ---
 
-## Two ways to use copilot-flow
+## Three ways to use copilot-flow
+
+### 0. TUI — interactive terminal UI
+
+Launch a full-screen, slash-command-driven interface that wraps every command:
+
+```bash
+copilot-flow tui              # start on the home dashboard
+copilot-flow tui --screen exec  # jump straight to a screen
+```
+
+Navigate with `/plan`, `/exec`, `/memory`, `/swarm`, `/doctor`, and more.
+See [docs/commands/tui.md](docs/commands/tui.md) for the full screen reference.
 
 ### 1. CLI — run commands directly
 
@@ -351,6 +363,7 @@ copilot-flow agent spawn \
 | `doctor` / `init` / `status` | Setup and diagnostics | [→ docs/commands/doctor.md](docs/commands/doctor.md) |
 | `models` | List models available on your Copilot plan | [→ docs/commands/doctor.md](docs/commands/doctor.md) |
 | `hooks` | List and configure hooks | [→ docs/commands/hooks.md](docs/commands/hooks.md) |
+| `tui` | Interactive full-screen terminal UI | [→ docs/commands/tui.md](docs/commands/tui.md) |
 
 ---
 

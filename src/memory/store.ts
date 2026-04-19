@@ -238,6 +238,18 @@ export class MemoryStore {
     return result.changes > 0;
   }
 
+  /** List all distinct namespace names that have at least one non-expired entry. */
+  listNamespaces(): string[] {
+    const rows = this.db
+      .prepare(
+        `SELECT DISTINCT namespace FROM entries
+         WHERE (expires_at IS NULL OR expires_at > ?)
+         ORDER BY namespace`
+      )
+      .all(Date.now()) as Array<{ namespace: string }>;
+    return rows.map(r => r.namespace);
+  }
+
   /** Delete all entries in a namespace. Returns the number of deleted entries. */
   clear(namespace: string): number {
     const result = this.db
