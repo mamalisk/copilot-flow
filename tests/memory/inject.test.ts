@@ -162,6 +162,35 @@ describe('buildMemoryContext — layered injection', () => {
     expect(withBothFull).toMatch(/\n\n$/);
   });
 
+  // ── taskQuery — BM25 relevance re-ranking ────────────────────────────────
+
+  it('taskQuery ranks relevant entries above unrelated high-importance entries', () => {
+    // High importance but unrelated to the query
+    store.store('ns', 'cors-policy',   'Allow credentials from listed origins', { importance: 5 });
+    store.store('ns', 'db-pool-size',  'Connection pool set to 20', { importance: 4 });
+    // Lower importance but directly relevant to "jwt auth token"
+    store.store('ns', 'auth-strategy', 'JWT with 15-min expiry, no refresh tokens', { importance: 2 });
+
+    const ctx = buildMemoryContext('ns', undefined, store, undefined, undefined, 'implement jwt auth token service');
+
+    // auth-strategy should appear before the high-importance but unrelated entries
+    const authPos  = ctx.indexOf('auth-strategy');
+    const corsPos  = ctx.indexOf('cors-policy');
+    const dbPos    = ctx.indexOf('db-pool-size');
+    expect(authPos).toBeGreaterThan(-1);
+    expect(authPos).toBeLessThan(corsPos);
+    expect(authPos).toBeLessThan(dbPos);
+  });
+
+  it('without taskQuery, Tier-1 is ordered by importance DESC (existing behaviour)', () => {
+    store.store('ns', 'low',  'v', { importance: 1 });
+    store.store('ns', 'high', 'v', { importance: 5 });
+    store.store('ns', 'mid',  'v', { importance: 3 });
+    const ctx = buildMemoryContext('ns', undefined, store);
+    expect(ctx.indexOf('high')).toBeLessThan(ctx.indexOf('mid'));
+    expect(ctx.indexOf('mid')).toBeLessThan(ctx.indexOf('low'));
+  });
+
   // ── Memory types ──────────────────────────────────────────────────────────
 
   it('workflow-state entries are excluded from prompt injection', () => {

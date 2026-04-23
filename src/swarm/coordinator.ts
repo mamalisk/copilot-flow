@@ -87,7 +87,7 @@ async function runSequential(
   for (const task of tasks) {
     const lessons = options.memoryNamespace ? loadLessonsContent(task.agentType) : '';
     const memCtx = options.memoryNamespace
-      ? buildMemoryContext(options.memoryNamespace, undefined, undefined, identity, lessons)
+      ? buildMemoryContext(options.memoryNamespace, undefined, undefined, identity, lessons, task.prompt.slice(0, 200))
       : '';
     output.info(`${agentBadge(task.agentType)} ${task.id} — ${taskDescription(task)}`);
     const label = agentLabel(task);
@@ -157,7 +157,7 @@ async function runHierarchical(
       ready.map(async task => {
         const lessons = options.memoryNamespace ? loadLessonsContent(task.agentType) : '';
         const memCtx = options.memoryNamespace
-          ? buildMemoryContext(options.memoryNamespace, undefined, undefined, identity, lessons)
+          ? buildMemoryContext(options.memoryNamespace, undefined, undefined, identity, lessons, task.prompt.slice(0, 200))
           : '';
         const label = agentLabel(task);
         void hooks.agentSpawn({ agentType: task.agentType, label, taskId: task.id });
@@ -211,7 +211,7 @@ async function runMesh(
     tasks.map(async task => {
       const lessons = options.memoryNamespace ? loadLessonsContent(task.agentType) : '';
       const memCtx = options.memoryNamespace
-        ? buildMemoryContext(options.memoryNamespace, undefined, undefined, identity, lessons)
+        ? buildMemoryContext(options.memoryNamespace, undefined, undefined, identity, lessons, task.prompt.slice(0, 200))
         : '';
       const label = agentLabel(task);
       void hooks.agentSpawn({ agentType: task.agentType, label, taskId: task.id });

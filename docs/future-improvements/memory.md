@@ -204,6 +204,29 @@ semantic meaning — there is no way to query "all decisions" or "all workflow s
 
 ---
 
+## ✅ 9. Task-relevance injection (BM25 query-aware)
+
+> **Implemented** — `buildMemoryContext` gains an optional `taskQuery?: string` 6th parameter.
+> When provided, Tier-1 entry ordering switches from importance-only to BM25 relevance against
+> the query, so agents receive the facts most pertinent to their specific task first.
+> All callers pass the first 200 chars of the current task/phase description as the query.
+> Zero new dependencies — uses the existing `rankByBm25` from `src/memory/bm25.ts`.
+> 2 new inject tests added.
+
+~~**Current behaviour**: `buildMemoryContext` always ranks Tier-1 entries by global importance
+DESC. A high-importance-but-unrelated fact from a previous run would displace a low-importance
+but directly relevant one for the current task.~~
+
+**What changed**:
+- `buildMemoryContext(..., taskQuery?: string)` — calls `rankByBm25(taskQuery, s.list(namespace))`
+  when `taskQuery` is set; falls back to the existing importance-ordered `s.list()` otherwise
+- `src/commands/agent.ts` — passes `task.slice(0, 200)`
+- `src/commands/exec.ts` — passes `phase.description.slice(0, 200)`
+- `src/swarm/coordinator.ts` — passes `task.prompt.slice(0, 200)` in all three topology runners
+- 2 new tests: relevance ranking verification + backward-compatibility of default importance ordering
+
+---
+
 ## Priority summary
 
 | # | Item | Effort | Impact | Depends on | Status |
@@ -216,3 +239,4 @@ semantic meaning — there is no way to query "all decisions" or "all workflow s
 | 6 | Layered injection | M | High | #2 | ✅ Done |
 | 7 | Memory types | S | Medium | — | ✅ Done |
 | 8 | Project identity block | S | Medium | — | ✅ Done |
+| 9 | Task-relevance injection | XS | Medium | #5 | ✅ Done |

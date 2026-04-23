@@ -144,6 +144,7 @@ export function registerAgent(program: Command): void {
             undefined,
             loadIdentityContent(),
             loadLessonsContent(agentType),
+            task.slice(0, 200),
           )
         : '';
       const taskWithMemory = memoryContext + task;

@@ -30,6 +30,7 @@ import { existsSync, readFileSync, appendFileSync, mkdirSync } from 'fs';
 import path from 'path';
 import type { MemoryEntry } from '../types.js';
 import { getMemoryStore, MemoryStore } from './store.js';
+import { rankByBm25 } from './bm25.js';
 
 /** Path to the project identity file, relative to cwd. */
 export const IDENTITY_FILE = '.github/memory-identity.md';
@@ -116,6 +117,10 @@ function formatEntry(e: MemoryEntry): string {
  *                        When non-empty, prepended as "## Project identity" before facts.
  * @param lessonsContent  Content from loadLessonsContent(agentType).
  *                        When non-empty, injected as "## Lessons learned" after identity.
+ * @param taskQuery       When provided, Tier-1 entries are re-ranked by BM25 relevance
+ *                        to this query (typically the first ~200 chars of the task prompt)
+ *                        rather than by global importance. Pass the current task description
+ *                        so agents receive the most relevant memories for their specific work.
  * @returns A markdown section string, or empty string if no content exists.
  */
 export function buildMemoryContext(
@@ -124,18 +129,22 @@ export function buildMemoryContext(
   store?: MemoryStore,
   identityContent?: string,
   lessonsContent?: string,
+  taskQuery?: string,
 ): string {
   const s = store ?? getMemoryStore();
 
   // ── Tier 1: wake-up ────────────────────────────────────────────────────────
-  // Always-injected facts, sorted importance DESC then created_at DESC.
+  // Always-injected facts, sorted by task relevance (BM25) when taskQuery is
+  // provided, otherwise by importance DESC then created_at DESC.
   // Fill up to WAKE_UP_CHAR_CAP chars. workflow-state entries are blobs and
   // are excluded from prompt injection.
+  const allEntries    = s.list(namespace);
+  const tier1Ranked   = taskQuery ? rankByBm25(taskQuery, allEntries) : allEntries;
   const wakeUpLines: string[] = [];
   const wakeUpIds   = new Set<string>();
   let usedChars     = 0;
 
-  for (const e of s.list(namespace)) {
+  for (const e of tier1Ranked) {
     if (e.type === 'workflow-state') continue; // blobs, not prose facts
     const line = formatEntry(e);
     const cost = line.length + 1; // +1 for the trailing newline

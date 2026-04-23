@@ -40,7 +40,7 @@ Every agent prompt is built in order:
 |-------|--------|----------|
 | **Project identity** | `.github/memory-identity.md` | Permanent — written once, always present |
 | **Lessons learned** | `.github/lessons/<agentType>.md` + `_global.md` | Permanent — appended automatically as agents run |
-| **Remembered context** | SQLite memory (importance-ranked, BM25-searched) | 30-day TTL, refreshed on every run |
+| **Remembered context** | SQLite memory (BM25-ranked by task relevance) | 30-day TTL, refreshed on every run |
 
 ### What gets captured automatically
 

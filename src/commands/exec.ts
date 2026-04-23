@@ -228,6 +228,7 @@ async function runPhase(
         undefined,
         loadIdentityContent(),
         loadLessonsContent(phaseAgentType),
+        phase.description.slice(0, 200),
       )
     : '';
 
