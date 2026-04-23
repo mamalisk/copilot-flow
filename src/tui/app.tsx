@@ -6,6 +6,8 @@ import { DoctorScreen } from './screens/doctor.js';
 import { ExecScreen } from './screens/exec.js';
 import { MemoryScreen } from './screens/memory.js';
 import { SwarmScreen } from './screens/swarm.js';
+import { AgentScreen } from './screens/agent.js';
+import { PlanScreen } from './screens/plan.js';
 import { PlaceholderScreen } from './screens/placeholder.js';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -38,6 +40,8 @@ export function App({ initialScreen = 'home' }: AppProps) {
       case 'exec':    return <ExecScreen router={router} />;
       case 'memory':  return <MemoryScreen router={router} />;
       case 'swarm':   return <SwarmScreen router={router} />;
+      case 'agent':   return <AgentScreen router={router} />;
+      case 'plan':    return <PlanScreen router={router} />;
       default:        return <PlaceholderScreen screen={current.screen} router={router} />;
     }
   };
@@ -51,7 +55,10 @@ export function App({ initialScreen = 'home' }: AppProps) {
     <Box flexDirection="column">
       {/* Header */}
       <Box justifyContent="space-between" paddingX={1}>
-        <Text bold color="cyan">copilot-flow</Text>
+        <Box>
+          <Text color="yellow" bold>⬡ </Text>
+          <Text bold color="cyan">copilot-flow</Text>
+        </Box>
         <Text dimColor>{breadcrumb}  v{version}</Text>
       </Box>
 

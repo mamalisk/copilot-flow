@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Box, Text, useInput, type Key } from 'ink';
+import { Spinner } from '../components/Spinner.js';
 import { runSwarm } from '../../swarm/coordinator.js';
 import { generateAgentName } from '../../output.js';
 import type { AgentType, SwarmTask, SwarmTopology } from '../../types.js';
@@ -276,7 +277,10 @@ export function SwarmScreen({ router }: SwarmProps) {
     const elapsed = row.startedAt != null ? (row.doneAt ?? now) - row.startedAt : null;
     return (
       <Box key={row.id}>
-        <Text color={STATUS_COLOR[row.status]}>{STATUS_ICON[row.status]}{' '}</Text>
+        {row.status === 'running'
+          ? <><Spinner /><Text>{' '}</Text></>
+          : <Text color={STATUS_COLOR[row.status]}>{STATUS_ICON[row.status]}{' '}</Text>
+        }
         <Text dimColor>{`[${row.agentType}]`.padEnd(14)}</Text>
         <Text>{row.label.padEnd(18)}</Text>
         <Text dimColor>{elapsed != null ? fmtMs(elapsed) : '—     '}{'  '}</Text>
@@ -302,7 +306,10 @@ export function SwarmScreen({ router }: SwarmProps) {
           return [(
             <Box key={id}>
               <Text dimColor>{ti === 0 ? `Wave ${wi + 1}  ` : '         '}</Text>
-              <Text color={STATUS_COLOR[row.status]}>{STATUS_ICON[row.status]}{' '}</Text>
+              {row.status === 'running'
+                ? <><Spinner /><Text>{' '}</Text></>
+                : <Text color={STATUS_COLOR[row.status]}>{STATUS_ICON[row.status]}{' '}</Text>
+              }
               <Text dimColor>{`[${row.agentType}]`.padEnd(14)}</Text>
               <Text>{row.label.padEnd(18)}</Text>
               <Text dimColor>{elapsed != null ? fmtMs(elapsed) : '—     '}{'  '}</Text>

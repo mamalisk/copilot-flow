@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Box, Text, useInput, type Key } from 'ink';
+import { Spinner } from '../components/Spinner.js';
 import { readFileSync, existsSync, writeFileSync, mkdirSync } from 'fs';
 import path from 'path';
 import yaml from 'js-yaml';
@@ -359,9 +360,10 @@ export function ExecScreen({ router }: ExecProps) {
           const active = i === selectedRow;
           return (
             <Box key={row.id}>
-              <Text color={STATUS_COLOR[row.status]}>
-                {STATUS_ICON[row.status]}{' '}
-              </Text>
+              {row.status === 'running'
+                ? <><Spinner /><Text>{' '}</Text></>
+                : <Text color={STATUS_COLOR[row.status]}>{STATUS_ICON[row.status]}{' '}</Text>
+              }
               <Text color={active ? 'cyan' : undefined} bold={active}>
                 {row.id.padEnd(16)}
               </Text>

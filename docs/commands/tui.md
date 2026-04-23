@@ -14,7 +14,7 @@ The TUI presents a split layout: an active **screen viewport** above and a persi
 **shell input bar** at the bottom. Navigate by typing slash commands into the bar.
 
 ```
-┌─ copilot-flow ──────────────────────────── home  v2.11.0 ─┐
+┌─ ⬡ copilot-flow ─────────────────────────── home  v2.11.0 ─┐
 │                                                             │
 │  [active screen renders here]                              │
 │                                                             │
@@ -44,9 +44,9 @@ The TUI presents a split layout: an active **screen viewport** above and a persi
 | `/doctor` | Doctor | ✓ | Health check and interactive model picker |
 | `/memory [namespace]` | Memory | ✓ | Browse, search, and delete stored facts |
 | `/exec [plan.yaml]` | Exec | ✓ | Live execution dashboard with streaming |
-| `/plan [spec]` | Plan | placeholder | Generate a phase plan and review it |
+| `/plan [spec]` | Plan | ✓ | Generate a phase plan, then review and edit it in the Plan Studio |
 | `/swarm` | Swarm | ✓ | Configure and monitor a multi-agent swarm |
-| `/agent` | Agent | placeholder | Single agent task runner with streaming |
+| `/agent` | Agent | ✓ | Single agent task runner with streaming |
 | `/monitor` | Monitor | placeholder | Live agent activity feed |
 | `/init` | Init | placeholder | Guided setup wizard |
 | `/help` | Help | placeholder | Full keybinding reference |
@@ -161,6 +161,148 @@ Display varies by topology: hierarchical shows wave dividers, sequential shows `
 | Key | Action |
 |-----|--------|
 | `Escape` | Return to previous screen (only when done or errored) |
+| `Ctrl+C` | Abort the TUI |
+
+---
+
+### Plan screen
+
+Two-stage workflow: the analyst agent generates a YAML phase plan from a spec file, then
+the **Plan Studio** lets you review and edit phases before launching execution.
+
+**Input sub-view** — opened when you navigate to `/plan` with no argument:
+
+```
+Plan — generate
+
+Spec file  [prd.md▌]
+
+[enter] start  [esc] back
+```
+
+Navigating to `/plan prd.md` skips directly to generation.
+
+**Generating sub-view** — streams the analyst agent in real time:
+
+```
+Plan — generating prd.md                              00:23
+
+●  analyst agent running…
+
+─── streaming ──────────────────────────────
+Breaking down requirements into phases…
+Identified 5 phases across 3 dependency waves…
+
+[ctrl+c] abort
+```
+
+Auto-transitions to the Plan Studio on completion.
+
+**Plan Studio sub-view** — phase list with inline edit panel:
+
+```
+Plan Studio — prd.md  [5 phases]
+
+  ❯ research        agent/researcher    Investigate the domain…
+    design          swarm/hierarchical  Produce system architecture…
+    spec            agent/analyst       Define API contracts…
+    implement       agent/coder         Build the feature…
+    review          agent/reviewer      Quality review…
+
+── edit: research ──────────────────────────────────────
+  Description  [Investigate the domain and gather requirements.▌]
+  Type         ❯ agent   swarm
+  Agent        …  architect  ❯ researcher  coder  …
+  Model        [(default)]
+
+[tab] next field  [←→] cycle  [esc] done editing
+```
+
+| Key | Action |
+|-----|--------|
+| `↑` / `↓` | Navigate phase list |
+| `Enter` | Edit the selected phase |
+| `Tab` (in edit) | Cycle through editable fields |
+| `←` / `→` (in edit) | Cycle selector values (Type, Agent, Topology) |
+| `x` | Write plan to a temp file and open in the Exec screen |
+| `s` | Save plan to `.copilot-flow/plans/{spec}-studio/phases.yaml` |
+| `Escape` | Exit edit mode / return to previous screen |
+
+Editable fields per phase:
+
+| Field | Notes |
+|-------|-------|
+| Description | Free-text prompt for the phase |
+| Type | `agent` (single specialist) or `swarm` (multi-agent) |
+| Agent | Cycle through all 14 agent types (only for `agent` phases) |
+| Topology | `hierarchical`, `mesh`, or `sequential` (only for `swarm` phases) |
+| Model | Optional model override; leave blank to use the configured default |
+
+---
+
+### Agent screen
+
+Single agent task runner with live streaming. Configure the task, agent type, and
+optional model override, then watch the agent work in real time.
+
+**Configure sub-view** — opened when you navigate to `/agent`:
+
+```
+Agent — configure
+
+Task      [Implement the JWT refresh token service]
+Agent     …   architect   ❯ coder   researcher   tester   …
+Model     [(default)]
+
+[tab/enter] next field  [esc] back
+```
+
+Navigate fields with `Tab` / `Enter`, then configure:
+
+| Field | Control |
+|-------|---------|
+| Task | Type the prompt the agent will receive |
+| Agent | `←` / `→` to cycle through all 14 agent types |
+| Model | Type to override (leave blank for the agent registry default) |
+
+Press `Enter` on the Model field (with a task typed) to start.
+
+**Execution sub-view** — auto-transitions when the agent starts:
+
+```
+Agent — coder — keen-Ada                                  01:23
+
+●  running…  I'll implement the JWT refresh token service…
+
+─── streaming ──────────────────────────────
+Considering the architecture of the refresh token service…
+→ write_file: src/auth/token-store.ts
+
+[ctrl+c] abort
+```
+
+**Post-completion actions:**
+
+```
+Agent — coder — keen-Ada                                  01:47
+
+✓  complete
+
+─── output ─────────────────────────────────
+# JWT Refresh Token Service
+…
+
+[m] store in memory  [s] save to file  [esc] back
+```
+
+`[m]` prompts for a namespace and key, then stores the full output in the memory DB.
+`[s]` prompts for a file path and writes the output to disk.
+
+| Key | Action |
+|-----|--------|
+| `Escape` | Return to previous screen (only when done or errored) |
+| `m` | Open memory store prompt (namespace → key) |
+| `s` | Open file save prompt |
 | `Ctrl+C` | Abort the TUI |
 
 ---

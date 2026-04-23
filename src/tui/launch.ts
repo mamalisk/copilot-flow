@@ -19,8 +19,29 @@ export async function launch(initialScreen: ScreenName): Promise<void> {
   // interrupted by chalk/ora writes from runAgentTask, runSwarm, etc.
   setLogLevel('silent');
 
-  const { waitUntilExit } = render(
-    createElement(App, { initialScreen }),
-  );
-  await waitUntilExit();
+  // Switch to the terminal's alternate screen buffer — a blank slate separate
+  // from scroll history.  Without this, previous renders bleed through when
+  // the user scrolls up (visible in Git Bash, Windows Terminal, etc.).
+  process.stdout.write('\x1b[?1049h');
+
+  // Guard against writing the restore sequence twice (normal exit + 'exit' event).
+  let altExited = false;
+  const exitAlt = () => {
+    if (altExited) return;
+    altExited = true;
+    process.stdout.write('\x1b[?1049l');
+  };
+
+  // Restore the normal screen buffer on any termination path —
+  // covers SIGINT (Ctrl+C), SIGTERM, and uncaught exceptions.
+  process.once('exit', exitAlt);
+
+  try {
+    const { waitUntilExit } = render(
+      createElement(App, { initialScreen }),
+    );
+    await waitUntilExit();
+  } finally {
+    exitAlt();
+  }
 }
