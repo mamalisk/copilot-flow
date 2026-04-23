@@ -10,6 +10,7 @@ import { AgentScreen } from './screens/agent.js';
 import { PlanScreen } from './screens/plan.js';
 import { MonitorScreen } from './screens/monitor.js';
 import { PlaceholderScreen } from './screens/placeholder.js';
+import { TelemetryScreen } from './screens/telemetry.js';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { version } = require('../../package.json') as { version: string };
@@ -43,8 +44,9 @@ export function App({ initialScreen = 'home' }: AppProps) {
       case 'swarm':   return <SwarmScreen router={router} />;
       case 'agent':   return <AgentScreen router={router} />;
       case 'plan':    return <PlanScreen router={router} />;
-      case 'monitor': return <MonitorScreen router={router} />;
-      default:        return <PlaceholderScreen screen={current.screen} router={router} />;
+      case 'monitor':   return <MonitorScreen router={router} />;
+      case 'telemetry': return <TelemetryScreen router={router} />;
+      default:          return <PlaceholderScreen screen={current.screen} router={router} />;
     }
   };
 

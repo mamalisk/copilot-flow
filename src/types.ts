@@ -311,6 +311,35 @@ export interface Plan {
   phases: PlanPhase[];
 }
 
+// ─── Telemetry Types ──────────────────────────────────────────────────────────
+
+export interface TelemetryRun {
+  id: string;
+  agentType: AgentType;
+  label: string;
+  sessionId: string;
+  model: string;
+  success: boolean;
+  durationMs: number;
+  attempts: number;
+  promptChars: number;
+  responseChars: number;
+  toolsInvoked: string[];
+  error?: string;
+  createdAt: number;
+}
+
+export interface TelemetrySummary {
+  totalRuns: number;
+  /** 0–1 fraction */
+  successRate: number;
+  avgDurationMs: number;
+  avgPromptChars: number;
+  avgResponseChars: number;
+  byAgentType: Record<string, { runs: number; successRate: number; avgDurationMs: number }>;
+  topTools: Array<{ tool: string; count: number }>;
+}
+
 // ─── CLI Types ────────────────────────────────────────────────────────────────
 
 export interface CommandContext {

@@ -7,6 +7,7 @@ const COMMANDS: [string, string][] = [
   ['/swarm',        'Configure and monitor a multi-agent swarm'],
   ['/agent',        'Run a single agent task with streaming output'],
   ['/memory',       'Browse and manage stored facts'],
+  ['/telemetry',    'Run metrics and agent performance dashboard'],
   ['/monitor',      'Live agent activity feed'],
   ['/doctor',       'System health check and model picker'],
   ['/init',         'Guided setup wizard'],

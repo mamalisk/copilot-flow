@@ -10,7 +10,8 @@ export type ScreenName =
   | 'memory'
   | 'monitor'
   | 'doctor'
-  | 'help';
+  | 'help'
+  | 'telemetry';
 
 export interface ScreenEntry {
   screen: ScreenName;
@@ -66,14 +67,15 @@ export function useRouter(initial: ScreenName = 'home'): RouterApi {
 
 /** Maps slash-command names to ScreenName values. */
 export const SCREEN_COMMANDS: Partial<Record<string, ScreenName>> = {
-  home:    'home',
-  init:    'init',
-  plan:    'plan',
-  exec:    'exec',
-  swarm:   'swarm',
-  agent:   'agent',
-  memory:  'memory',
-  monitor: 'monitor',
-  doctor:  'doctor',
-  help:    'help',
+  home:      'home',
+  init:      'init',
+  plan:      'plan',
+  exec:      'exec',
+  swarm:     'swarm',
+  agent:     'agent',
+  memory:    'memory',
+  monitor:   'monitor',
+  doctor:    'doctor',
+  help:      'help',
+  telemetry: 'telemetry',
 };

@@ -16,6 +16,8 @@ import { registerDoctor } from './doctor.js';
 import { registerPlan } from './plan.js';
 import { registerExec } from './exec.js';
 import { registerTui } from './tui.js';
+import { registerTelemetry } from './telemetry.js';
+import { registerTelemetryCollector } from '../telemetry/collector.js';
 import { isInitialised, ensureRuntimeDirs, saveConfig, DEFAULT_CONFIG } from '../config.js';
 import { output } from '../output.js';
 
@@ -41,6 +43,10 @@ registerDoctor(program);
 registerPlan(program);
 registerExec(program);
 registerTui(program);
+registerTelemetry(program);
+
+// Register the telemetry collector so every agent run is recorded automatically.
+registerTelemetryCollector();
 
 // Auto-init: if .copilot-flow/config.json is missing and the command is not
 // one of the exempt commands, silently initialise with defaults before running.

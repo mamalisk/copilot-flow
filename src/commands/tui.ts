@@ -4,7 +4,7 @@ import type { ScreenName } from '../tui/router.js';
 
 const VALID_SCREENS: ScreenName[] = [
   'home', 'init', 'plan', 'exec', 'swarm',
-  'agent', 'memory', 'monitor', 'doctor', 'help',
+  'agent', 'memory', 'monitor', 'doctor', 'help', 'telemetry',
 ];
 
 export function registerTui(program: Command): void {
