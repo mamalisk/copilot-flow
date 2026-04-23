@@ -15,6 +15,7 @@ import { registerStatus } from './status.js';
 import { registerDoctor } from './doctor.js';
 import { registerPlan } from './plan.js';
 import { registerExec } from './exec.js';
+import { registerTui } from './tui.js';
 import { isInitialised, ensureRuntimeDirs, saveConfig, DEFAULT_CONFIG } from '../config.js';
 import { output } from '../output.js';
 
@@ -39,6 +40,7 @@ registerStatus(program);
 registerDoctor(program);
 registerPlan(program);
 registerExec(program);
+registerTui(program);
 
 // Auto-init: if .copilot-flow/config.json is missing and the command is not
 // one of the exempt commands, silently initialise with defaults before running.

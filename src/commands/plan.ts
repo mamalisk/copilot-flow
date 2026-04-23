@@ -4,18 +4,13 @@ import path from 'path';
 import { Command } from 'commander';
 import yaml from 'js-yaml';
 import matter from 'gray-matter';
-import { runAgentTask } from '../agents/executor.js';
 import { output } from '../output.js';
 import { loadConfig } from '../config.js';
 import { clientManager } from '../core/client-manager.js';
+import { buildPlannerPrompt } from '../lib/planner.js';
+import { runAgentTask } from '../agents/executor.js';
 import type { Plan, AgentType, SwarmTopology } from '../types.js';
 import type { CustomAgentConfig } from '@github/copilot-sdk';
-
-const AGENT_TYPES = [
-  'coder', 'researcher', 'tester', 'reviewer', 'architect',
-  'coordinator', 'analyst', 'debugger', 'documenter', 'optimizer',
-  'security-auditor', 'performance-engineer',
-].join(', ');
 
 /** Read repo instructions from disk. Returns undefined if disabled or not found. */
 function resolveInstructions(
@@ -49,71 +44,6 @@ function loadAgentsFromDirs(dirs: string[]): CustomAgentConfig[] {
         } as CustomAgentConfig;
       });
   });
-}
-
-function buildPlannerPrompt(specContent: string): string {
-  return `You are a software project planner for an AI agent pipeline. \
-Analyse the following specification and produce a YAML execution plan \
-that breaks the work into sequential phases.
-
-Rules:
-- Each phase must have a unique kebab-case id.
-- type must be "agent" (single specialist) or "swarm" (multi-agent pipeline).
-- agentType (type: agent) must be one of: ${AGENT_TYPES}
-- topology (type: swarm) must be one of: hierarchical, sequential, mesh
-- agents (type: swarm) is a list of agentType values forming the pipeline.
-- dependsOn lists phase ids that must complete before this phase starts.
-- The first phase must have an empty dependsOn list.
-- output is optional — if omitted the file will be named phase-{id}.md.
-- subTasks: when topology is "mesh" AND agents contains duplicate types, you MUST provide
-  a subTasks list of the same length as agents. Each entry is the specific task description
-  for that agent. This ensures each agent receives distinct work instead of attempting the
-  entire task independently and colliding on shared resources.
-- model: optional model override for this phase (e.g. "o1" for a heavy reasoning phase).
-- timeoutMs: optional session timeout in ms for this phase. Use for phases expected to
-  take longer than the default (e.g. a large code-generation phase).
-- agentName: optional name of a custom agent to activate for this phase. Only set when
-  the user's --agent-dir provides a named agent that fits the phase's role.
-- Output ONLY valid YAML inside a single \`\`\`yaml code block. No other text.
-
-Example structure:
-\`\`\`yaml
-version: "1"
-phases:
-  - id: research
-    description: Investigate the problem domain and gather requirements.
-    type: agent
-    agentType: researcher
-    dependsOn: []
-  - id: design
-    description: Design the solution architecture based on research.
-    type: swarm
-    topology: hierarchical
-    agents: [architect, analyst]
-    dependsOn: [research]
-  - id: implement
-    description: Implement the solution in 3 programming languages as fast as possible.
-    type: swarm
-    topology: mesh
-    agents: [coder, coder, coder]
-    subTasks:
-      - "Write hello_world.py — a Python script that prints 'Hello, World!'"
-      - "Write hello_world.js — a Node.js script that prints 'Hello, World!'"
-      - "Write hello_world.go — a Go program that prints 'Hello, World!'"
-    model: gpt-4o-mini    # optional: cheaper model for bulk code generation
-    timeoutMs: 1800000    # optional: 30 min for a heavy phase
-    agentName: billing-expert   # optional: activate a custom agent for this phase
-    dependsOn: [design]
-  - id: review
-    description: Review the implementation for quality and correctness.
-    type: agent
-    agentType: reviewer
-    model: o1             # optional: stronger model for validation
-    dependsOn: [implement]
-\`\`\`
-
-Specification to plan:
-${specContent}`;
 }
 
 /** Build the default plan output path: .copilot-flow/plans/{spec-basename}-{timestamp}/phases.yaml */
