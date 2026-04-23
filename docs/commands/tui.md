@@ -45,7 +45,7 @@ The TUI presents a split layout: an active **screen viewport** above and a persi
 | `/memory [namespace]` | Memory | ✓ | Browse, search, and delete stored facts |
 | `/exec [plan.yaml]` | Exec | ✓ | Live execution dashboard with streaming |
 | `/plan [spec]` | Plan | placeholder | Generate a phase plan and review it |
-| `/swarm` | Swarm | placeholder | Configure and monitor a multi-agent swarm |
+| `/swarm` | Swarm | ✓ | Configure and monitor a multi-agent swarm |
 | `/agent` | Agent | placeholder | Single agent task runner with streaming |
 | `/monitor` | Monitor | placeholder | Live agent activity feed |
 | `/init` | Init | placeholder | Guided setup wizard |
@@ -98,6 +98,69 @@ currently writing output.
 |-----|--------|
 | `↑` / `↓` | Scroll the phase list |
 | `Escape` | Return to previous screen (only when done or errored — not mid-run) |
+| `Ctrl+C` | Abort the TUI |
+
+---
+
+### Swarm screen
+
+Two-pane workflow: configure a swarm in the first view, then monitor live execution in the second.
+
+**Configure sub-view** — opened when you navigate to `/swarm`:
+
+```
+Swarm — configure
+
+Task      [Build the checkout flow with Stripe integration]
+Topology  ❯ hierarchical   mesh   sequential
+Agents    ✓ researcher   ✓ coder   ✓ tester   ○ reviewer   ○ architect   ○ analyst   ○ debugger
+
+[tab/enter] next field  [esc] back
+```
+
+Navigate fields with `Tab` / `Enter`, then configure:
+
+| Field | Control |
+|-------|---------|
+| Task | Type the shared prompt all agents will receive |
+| Topology | `←` / `→` to cycle between `hierarchical`, `mesh`, `sequential` |
+| Agents | `←` / `→` to move cursor, `Space` to toggle on/off |
+
+Press `Enter` on the Agents field (with a task typed and at least one agent selected) to start.
+
+Task graph built per topology:
+- **hierarchical** — first agent (wave 1) → middle agents in parallel (wave 2) → last agent (wave 3)
+- **mesh** — all agents run concurrently with no dependencies
+- **sequential** — each agent depends on the previous, forming a linear chain
+
+**Monitor sub-view** — auto-transitions when the swarm starts:
+
+```
+Swarm — hierarchical — Build the checkout flow…            02:11 total
+
+Wave 1   ✓  [researcher]  swift-Darwin       00:38
+─────────────────────────────────────────────────────────────────────
+Wave 2   ●  [coder]       keen-Ada           01:33  Writing service…
+         ●  [tester]      agile-Turing       01:33  Writing tests…
+─────────────────────────────────────────────────────────────────────
+Wave 3   ○  [reviewer]    —
+
+─── keen-Ada ──────────────────────────────
+The PaymentService extends BaseService…
+```
+
+Display varies by topology: hierarchical shows wave dividers, sequential shows `↓` between tasks, mesh shows a flat list.
+
+| Icon | Meaning |
+|------|---------|
+| `○` | Waiting |
+| `●` | Running (cyan) |
+| `✓` | Done (green) |
+| `✗` | Failed (red) |
+
+| Key | Action |
+|-----|--------|
+| `Escape` | Return to previous screen (only when done or errored) |
 | `Ctrl+C` | Abort the TUI |
 
 ---

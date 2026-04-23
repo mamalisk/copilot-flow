@@ -5,6 +5,7 @@ import { HomeScreen } from './screens/home.js';
 import { DoctorScreen } from './screens/doctor.js';
 import { ExecScreen } from './screens/exec.js';
 import { MemoryScreen } from './screens/memory.js';
+import { SwarmScreen } from './screens/swarm.js';
 import { PlaceholderScreen } from './screens/placeholder.js';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -36,6 +37,7 @@ export function App({ initialScreen = 'home' }: AppProps) {
       case 'doctor':  return <DoctorScreen router={router} />;
       case 'exec':    return <ExecScreen router={router} />;
       case 'memory':  return <MemoryScreen router={router} />;
+      case 'swarm':   return <SwarmScreen router={router} />;
       default:        return <PlaceholderScreen screen={current.screen} router={router} />;
     }
   };
