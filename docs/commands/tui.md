@@ -47,7 +47,7 @@ The TUI presents a split layout: an active **screen viewport** above and a persi
 | `/plan [spec]` | Plan | ✓ | Generate a phase plan, then review and edit it in the Plan Studio |
 | `/swarm` | Swarm | ✓ | Configure and monitor a multi-agent swarm |
 | `/agent` | Agent | ✓ | Single agent task runner with streaming |
-| `/monitor` | Monitor | placeholder | Live agent activity feed |
+| `/monitor` | Monitor | ✓ | Live hook event feed with filtering and freeze |
 | `/init` | Init | placeholder | Guided setup wizard |
 | `/help` | Help | placeholder | Full keybinding reference |
 
@@ -334,6 +334,49 @@ Namespaces: [project-x]  ·  session   42 entries
 | `d` | Delete selected entry (prompts for confirmation) |
 | `y` (in delete prompt) | Confirm deletion |
 | Any other key (in delete prompt) | Cancel deletion |
+| `Escape` | Return to previous screen |
+
+---
+
+### Monitor screen
+
+Append-only live event feed — shows every hook event fired by agents, swarms, and exec runs.
+Open `/monitor` at any time; events accumulate as long as the screen is mounted.
+
+```
+Monitor — live event feed                           12 events
+
+  09:42:01  swarm-start     ✓  hierarchical · 4 tasks
+  09:42:01  agent-spawn        [coder]  keen-Ada
+  09:42:01  pre-task           [coder]  keen-Ada
+  09:42:01  session-start      [coder]  keen-Ada  (gpt-4o)
+  09:42:39  session-end     ✓  [coder]  keen-Ada
+  09:42:39  post-task       ✓  [coder]  keen-Ada  00:38
+  09:42:39  agent-term      ✓  [coder]  keen-Ada
+  09:43:01  swarm-end       ✓  4/4 succeeded
+
+[a] all  [e] errors  [f] freeze  [↑↓] scroll  [esc] back
+```
+
+Events emitted by the framework:
+
+| Event | Fired when |
+|-------|-----------|
+| `swarm-start` | `runSwarm()` begins |
+| `swarm-end` | `runSwarm()` completes |
+| `agent-spawn` | an agent task starts within a swarm |
+| `agent-term` | an agent task finishes within a swarm |
+| `pre-task` | `runAgentTask()` begins (any call site) |
+| `post-task` | `runAgentTask()` completes — success or failure |
+| `session-start` | a Copilot session is created |
+| `session-end` | a Copilot session disconnects |
+
+| Key | Action |
+|-----|--------|
+| `a` | Show all events |
+| `e` | Show errors only (failed post-task / session-end) |
+| `f` | Toggle freeze — pauses incoming events |
+| `↑` / `↓` | Scroll history |
 | `Escape` | Return to previous screen |
 
 ## Options

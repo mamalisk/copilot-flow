@@ -90,14 +90,17 @@ async function runSequential(
       ? buildMemoryContext(options.memoryNamespace, undefined, undefined, identity, lessons)
       : '';
     output.info(`${agentBadge(task.agentType)} ${task.id} — ${taskDescription(task)}`);
+    const label = agentLabel(task);
+    void hooks.agentSpawn({ agentType: task.agentType, label, taskId: task.id });
     const result = await runAgentTask(task.agentType, memCtx + buildPrompt(task, results, mem, ns), {
       retryConfig: task.retryConfig,
       ...task.sessionOptions,
-      label: agentLabel(task),
+      label,
       onChunk: options.onProgress
         ? chunk => options.onProgress!(task.id, task.agentType, chunk)
         : undefined,
     });
+    void hooks.agentTerminate({ agentType: task.agentType, label, taskId: task.id, success: result.success, durationMs: result.durationMs });
     results.set(task.id, result);
     if (result.success) {
       mem.store(ns, `task:${task.id}:result`, result.output, { ttlMs: 60 * 60 * 1000 });
@@ -156,14 +159,17 @@ async function runHierarchical(
         const memCtx = options.memoryNamespace
           ? buildMemoryContext(options.memoryNamespace, undefined, undefined, identity, lessons)
           : '';
+        const label = agentLabel(task);
+        void hooks.agentSpawn({ agentType: task.agentType, label, taskId: task.id });
         const result = await runAgentTask(task.agentType, memCtx + buildPrompt(task, results, mem, ns), {
           retryConfig: task.retryConfig,
           ...task.sessionOptions,
-          label: agentLabel(task),
+          label,
           onChunk: options.onProgress
             ? chunk => options.onProgress!(task.id, task.agentType, chunk)
             : undefined,
         });
+        void hooks.agentTerminate({ agentType: task.agentType, label, taskId: task.id, success: result.success, durationMs: result.durationMs });
         return { task, result };
       })
     );
@@ -207,14 +213,17 @@ async function runMesh(
       const memCtx = options.memoryNamespace
         ? buildMemoryContext(options.memoryNamespace, undefined, undefined, identity, lessons)
         : '';
+      const label = agentLabel(task);
+      void hooks.agentSpawn({ agentType: task.agentType, label, taskId: task.id });
       const result = await runAgentTask(task.agentType, memCtx + buildPrompt(task, results, mem, ns), {
         retryConfig: task.retryConfig,
         ...task.sessionOptions,
-        label: agentLabel(task),
+        label,
         onChunk: options.onProgress
           ? chunk => options.onProgress!(task.id, task.agentType, chunk)
           : undefined,
       });
+      void hooks.agentTerminate({ agentType: task.agentType, label, taskId: task.id, success: result.success, durationMs: result.durationMs });
       return { task, result };
     })
   );

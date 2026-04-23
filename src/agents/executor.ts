@@ -11,6 +11,7 @@ import { clientManager } from '../core/client-manager.js';
 import { withRetry, RetryPredicates } from '../core/retry.js';
 import { classifyError } from '../core/error-handler.js';
 import { output } from '../output.js';
+import { hooks } from '../hooks/executor.js';
 import { getAgentDefinition } from './registry.js';
 import { appendLesson } from '../memory/inject.js';
 import type { AgentType, AgentResult } from '../types.js';
@@ -96,6 +97,8 @@ export async function runAgentTask(
   let sessionId = '';
 
   try {
+    void hooks.preTask({ agentType, label: displayLabel });
+
     const output_text = await withRetry(
       async () => {
         attempts++;
@@ -132,6 +135,7 @@ export async function runAgentTask(
 
         sessionId = session.sessionId;
         output.debug(`[${displayLabel}] Session started: ${sessionId}`);
+        void hooks.sessionStart({ agentType, label: displayLabel, sessionId, model: model || 'default' });
 
         let collected = '';
         // Once streaming response text starts, suppress further progress lines so
@@ -204,6 +208,7 @@ export async function runAgentTask(
 
         await session.disconnect();
         output.debug(`[${displayLabel}] Session completed: ${sessionId}`);
+        void hooks.sessionEnd({ agentType, label: displayLabel, sessionId, success: true });
 
         return finalText;
       },
@@ -213,6 +218,8 @@ export async function runAgentTask(
         onRetry: options.retryConfig?.onRetry ?? onRetry,
       }
     );
+
+    void hooks.postTask({ agentType, label: displayLabel, success: true, durationMs: Date.now() - startTime, attempts });
 
     return {
       agentType,
@@ -226,6 +233,7 @@ export async function runAgentTask(
   } catch (err) {
     const classified = classifyError(err);
     output.error(`[${displayLabel}] Failed after ${attempts} attempt(s): ${classified.message}`);
+    void hooks.postTask({ agentType, label: displayLabel, success: false, durationMs: Date.now() - startTime, attempts, error: classified.message });
     // Record a permanent lesson so future runs know this agent/task combination fails
     appendLesson(
       agentType,
