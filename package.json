@@ -41,7 +41,7 @@
     "url": "https://github.com/mamalisk/copilot-flow/issues"
   },
   "dependencies": {
-    "@github/copilot-sdk": "latest",
+    "@github/copilot-sdk": "^0.3.0-preview.1",
     "chalk": "^5.3.0",
     "commander": "^12.1.0",
     "dotenv": "^16.4.5",

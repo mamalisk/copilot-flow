@@ -110,6 +110,10 @@ export async function runAgentTask(
         const session = await client.createSession({
           ...(model && { model }),
           onPermissionRequest: approveAll,
+          // Copilot binary 1.0.24+ sends elicitation.requested for file/action
+          // confirmations. Without this handler the request hangs and the tool
+          // reports failure. Accept all elicitations automatically.
+          onElicitationRequest: () => ({ action: 'accept' as const, content: { confirmed: true } }),
 
           // Repo instructions go into the dedicated custom_instructions section so
           // they don't overwrite the agent's own system message.
@@ -188,16 +192,22 @@ export async function runAgentTask(
             output.dim(`  [${displayLabel}] → ${e.data.toolName}${formatToolArgs(e.data.arguments)}`);
           }
         });
+        session.on('permission.completed', (e: { data: { result: { kind: string } } }) => {
+          if (e.data.result.kind !== 'approved') {
+            output.warn(`[${displayLabel}] permission denied: ${e.data.result.kind}`);
+          }
+        });
         session.on('tool.execution_progress', (e: { data: { progressMessage: string } }) => {
           if (!responseStarted) {
             output.dim(`  [${displayLabel}]   ${e.data.progressMessage}`);
           }
         });
         // Report tool failures regardless of streaming state.
-        session.on('tool.execution_complete', (e: { data: { toolCallId: string; success: boolean } }) => {
+        session.on('tool.execution_complete', (e: { data: { toolCallId: string; success: boolean; error?: { message: string; code?: string } } }) => {
           if (!e.data.success) {
             const name = toolCallNames.get(e.data.toolCallId) ?? 'tool';
-            output.warn(`[${displayLabel}] ✗ ${name} failed`);
+            const detail = e.data.error ? ` (${e.data.error.code ?? ''}: ${e.data.error.message})` : '';
+            output.warn(`[${displayLabel}] ✗ ${name} failed${detail}`);
           }
         });
 

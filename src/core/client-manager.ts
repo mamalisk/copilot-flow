@@ -23,7 +23,7 @@ export class ClientManager {
 
     this.client = new CopilotClient(
       token
-        ? { githubToken: token }
+        ? { gitHubToken: token }
         : { useLoggedInUser: true }
     );
 
