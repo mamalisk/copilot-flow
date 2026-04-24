@@ -222,7 +222,7 @@ export async function runAgentTask(
       }
     );
 
-    void hooks.postTask({ agentType, label: displayLabel, success: true, durationMs: Date.now() - startTime, attempts, promptChars: task.length, responseChars: output_text.length, model, sessionId, toolsInvoked });
+    await hooks.postTask({ agentType, label: displayLabel, success: true, durationMs: Date.now() - startTime, attempts, promptChars: task.length, responseChars: output_text.length, model, sessionId, toolsInvoked });
 
     return {
       agentType,
@@ -236,7 +236,7 @@ export async function runAgentTask(
   } catch (err) {
     const classified = classifyError(err);
     output.error(`[${displayLabel}] Failed after ${attempts} attempt(s): ${classified.message}`);
-    void hooks.postTask({ agentType, label: displayLabel, success: false, durationMs: Date.now() - startTime, attempts, promptChars: task.length, responseChars: 0, model, sessionId, toolsInvoked, error: classified.message });
+    await hooks.postTask({ agentType, label: displayLabel, success: false, durationMs: Date.now() - startTime, attempts, promptChars: task.length, responseChars: 0, model, sessionId, toolsInvoked, error: classified.message });
     // Record a permanent lesson so future runs know this agent/task combination fails
     appendLesson(
       agentType,
