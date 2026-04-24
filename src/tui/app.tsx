@@ -11,6 +11,7 @@ import { PlanScreen } from './screens/plan.js';
 import { MonitorScreen } from './screens/monitor.js';
 import { PlaceholderScreen } from './screens/placeholder.js';
 import { TelemetryScreen } from './screens/telemetry.js';
+import { SpecScreen } from './screens/spec.js';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { version } = require('../../package.json') as { version: string };
@@ -46,6 +47,7 @@ export function App({ initialScreen = 'home' }: AppProps) {
       case 'plan':    return <PlanScreen router={router} />;
       case 'monitor':   return <MonitorScreen router={router} />;
       case 'telemetry': return <TelemetryScreen router={router} />;
+      case 'spec':      return <SpecScreen router={router} />;
       default:          return <PlaceholderScreen screen={current.screen} router={router} />;
     }
   };
@@ -75,13 +77,15 @@ export function App({ initialScreen = 'home' }: AppProps) {
 
       <Text dimColor>{divider}</Text>
 
-      {/* Shell input bar */}
-      <Shell
-        onNavigate={handleNavigate}
-        onPop={router.pop}
-        canPop={router.canPop}
-        onQuit={() => exit()}
-      />
+      {/* Shell input bar — hidden in full-screen editor screens */}
+      {current.screen !== 'spec' && (
+        <Shell
+          onNavigate={handleNavigate}
+          onPop={router.pop}
+          canPop={router.canPop}
+          onQuit={() => exit()}
+        />
+      )}
     </Box>
   );
 }

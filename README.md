@@ -256,7 +256,7 @@ copilot-flow tui              # start on the home dashboard
 copilot-flow tui --screen exec  # jump straight to a screen
 ```
 
-Navigate with `/plan`, `/exec`, `/memory`, `/swarm`, `/telemetry`, `/doctor`, and more.
+Navigate with `/spec`, `/plan`, `/exec`, `/memory`, `/swarm`, `/telemetry`, `/doctor`, and more.
 See [docs/commands/tui.md](docs/commands/tui.md) for the full screen reference.
 
 ### 1. CLI — run commands directly

@@ -44,12 +44,56 @@ The TUI presents a split layout: an active **screen viewport** above and a persi
 | `/doctor` | Doctor | ✓ | Health check and interactive model picker |
 | `/memory [namespace]` | Memory | ✓ | Browse, search, and delete stored facts |
 | `/exec [plan.yaml]` | Exec | ✓ | Live execution dashboard with streaming |
+| `/spec [text]` | Spec | ✓ | Split-pane markdown editor → hand off spec to the plan generator |
 | `/plan [spec]` | Plan | ✓ | Generate a phase plan, then review and edit it in the Plan Studio |
 | `/swarm` | Swarm | ✓ | Configure and monitor a multi-agent swarm |
 | `/agent` | Agent | ✓ | Single agent task runner with streaming |
 | `/monitor` | Monitor | ✓ | Live hook event feed with filtering and freeze |
+| `/telemetry` | Telemetry | ✓ | Run metrics, latency, and agent performance dashboard |
 | `/init` | Init | placeholder | Guided setup wizard |
 | `/help` | Help | placeholder | Full keybinding reference |
+
+### Spec screen
+
+Split-pane markdown editor with a live rendered preview. Write or refine a spec
+before handing it off to the plan generator with a single key.
+
+```
+/spec
+/spec build a REST API for a todo app   # pre-populate with text
+```
+
+```
+┌─ Spec (markdown) ──────────────────────┐┌─ Preview ──────────────────┐
+│ # Todo API                             ││                            │
+│                                        ││ Todo API                   │
+│ Build a REST API with:                 ││ ════════                   │
+│ - Users (JWT auth)█                    ││                            │
+│ - Todos (CRUD)                         ││ Build a REST API with:     │
+│ - Tags                                 ││                            │
+│                                        ││  • Users (JWT auth)        │
+│                                        ││  • Todos (CRUD)            │
+│                                        ││  • Tags                    │
+└────────────────────────────────────────┘└────────────────────────────┘
+Ln 4  Col 17  |  Ctrl+P → generate plan  |  Esc → back  |  Ctrl+C → quit
+```
+
+The shell input bar is hidden while the spec screen is active so all keyboard
+input goes to the editor.
+
+| Key | Action |
+|-----|--------|
+| Any printable char | Insert at cursor |
+| `Backspace` | Delete character before cursor; merge lines when at column 0 |
+| `Enter` | Split line at cursor |
+| `↑` / `↓` / `←` / `→` | Move cursor; wraps across line boundaries |
+| `Ctrl+P` | Proceed — navigate to `/plan` with the current spec text |
+| `Escape` | Return to previous screen |
+| `Ctrl+C` | Quit the TUI |
+
+The preview pane re-renders on every keystroke using `marked` + `marked-terminal`.
+
+---
 
 ### Exec screen
 
@@ -384,7 +428,7 @@ Events emitted by the framework:
 ```
 --screen <screen>    Open a specific screen on launch (default: home)
                      Valid values: home, init, plan, exec, swarm, agent,
-                                   memory, monitor, doctor, help
+                                   memory, monitor, doctor, help, telemetry, spec
 ```
 
 ## Requirements

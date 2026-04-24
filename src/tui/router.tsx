@@ -11,7 +11,8 @@ export type ScreenName =
   | 'monitor'
   | 'doctor'
   | 'help'
-  | 'telemetry';
+  | 'telemetry'
+  | 'spec';
 
 export interface ScreenEntry {
   screen: ScreenName;
@@ -78,4 +79,5 @@ export const SCREEN_COMMANDS: Partial<Record<string, ScreenName>> = {
   doctor:    'doctor',
   help:      'help',
   telemetry: 'telemetry',
+  spec:      'spec',
 };
