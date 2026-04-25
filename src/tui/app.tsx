@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useApp, useInput, useWindowSize, Box, Text, type Key } from 'ink';
 import { useRouter, ScreenName } from './router.js';
 import { Shell } from './shell.js';
@@ -34,14 +35,17 @@ export function App({ initialScreen = 'home' }: AppProps) {
   const { columns }  = useWindowSize();
   const router       = useRouter(initialScreen);
   const { current }  = router;
+  const [shellActive, setShellActive] = useState(true);
 
   // Global: Escape pops the stack
   useInput((_char: string, key: Key) => {
     if (key.escape && router.canPop) router.pop();
   });
 
-  const handleNavigate = (screen: ScreenName, args: string[]) =>
+  const handleNavigate = (screen: ScreenName, args: string[]) => {
+    setShellActive(true);
     router.push(screen, args.length > 0 ? { args } : undefined);
+  };
 
   const divider = '─'.repeat(Math.max(1, columns));
 
@@ -50,7 +54,7 @@ export function App({ initialScreen = 'home' }: AppProps) {
       case 'home':    return <HomeScreen router={router} />;
       case 'doctor':  return <DoctorScreen router={router} />;
       case 'exec':    return <ExecScreen router={router} />;
-      case 'memory':  return <MemoryScreen router={router} />;
+      case 'memory':  return <MemoryScreen router={router} onCaptureInput={v => setShellActive(!v)} />;
       case 'swarm':   return <SwarmScreen router={router} />;
       case 'agent':   return <AgentScreen router={router} />;
       case 'plan':    return <PlanScreen router={router} />;
@@ -97,6 +101,7 @@ export function App({ initialScreen = 'home' }: AppProps) {
           onPop={router.pop}
           canPop={router.canPop}
           onQuit={() => exit()}
+          active={shellActive}
         />
       )}
     </Box>

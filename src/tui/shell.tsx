@@ -7,6 +7,8 @@ interface ShellProps {
   onPop: () => void;
   canPop: boolean;
   onQuit: () => void;
+  /** When false the shell's useInput is silenced so screens can own the keyboard. */
+  active?: boolean;
 }
 
 const HINTS = '[tab] complete  [↑↓] history  [esc] back  [ctrl+c] quit';
@@ -21,7 +23,7 @@ const META_COMMANDS = new Set(['back', 'quit', 'q']);
  * Persistent bottom input bar.
  * Accepts /command [args] and dispatches to the router.
  */
-export function Shell({ onNavigate, onPop, canPop, onQuit }: ShellProps) {
+export function Shell({ onNavigate, onPop, canPop, onQuit, active = true }: ShellProps) {
   const [input, setInput]     = useState('');
   const [history, setHistory] = useState<string[]>([]);
   const [histIdx, setHistIdx] = useState(-1);
@@ -105,7 +107,7 @@ export function Shell({ onNavigate, onPop, canPop, onQuit }: ShellProps) {
         setHistIdx(-1);
       }
     }
-  });
+  }, { isActive: active });
 
   // ── Derived display state ────────────────────────────────────────────────
 

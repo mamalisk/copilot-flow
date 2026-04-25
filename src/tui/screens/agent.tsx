@@ -5,9 +5,13 @@ import { writeFileSync } from 'fs';
 import { runAgentTask } from '../../agents/executor.js';
 import { getMemoryStore } from '../../memory/store.js';
 import { generateAgentName } from '../../output.js';
+import { clientManager } from '../../core/client-manager.js';
+import { loadConfig } from '../../config.js';
 import { AGENT_TYPE_LIST } from '../../types.js';
 import type { AgentType } from '../../types.js';
 import type { RouterApi } from '../router.js';
+
+interface ModelEntry { id: string; name: string; }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -56,6 +60,11 @@ export function AgentScreen({ router }: AgentProps) {
   const [modelInput,   setModelInput]   = useState('');
   const [configField,  setConfigField]  = useState<ConfigField>('task');
 
+  // Model picker state
+  const [models,        setModels]       = useState<ModelEntry[]>([]);
+  const [modelCursor,   setModelCursor]  = useState(0);
+  const [modelsLoading, setModelsLoading] = useState(true);
+
   // Execution state
   const [subView,      setSubView]      = useState<'configure' | 'run'>('configure');
   const [agentLabel,   setAgentLabel]   = useState('');
@@ -77,6 +86,26 @@ export function AgentScreen({ router }: AgentProps) {
   const liveRef = useRef(true);
   useEffect(() => () => { liveRef.current = false; }, []);
 
+  // Fetch available models once on mount
+  useEffect(() => {
+    let live = true;
+    async function fetchModels() {
+      try {
+        const config = loadConfig();
+        const client = await clientManager.getClient();
+        const list = await client.listModels() as ModelEntry[];
+        await clientManager.shutdown();
+        if (!live) return;
+        setModels(list);
+        const defIdx = list.findIndex(m => m.id === config.defaultModel);
+        if (defIdx >= 0) setModelCursor(defIdx);
+      } catch { /* non-fatal — fall back to text input */ }
+      finally { if (live) setModelsLoading(false); }
+    }
+    fetchModels();
+    return () => { live = false; };
+  }, []);
+
   const agentType = AGENT_TYPE_LIST[agentCursor] as AgentType;
 
   // Tick every second while running
@@ -95,8 +124,12 @@ export function AgentScreen({ router }: AgentProps) {
     setNow(t0);
     setRunStatus('running');
 
+    const resolvedModel = models.length > 0
+      ? (models[modelCursor]?.id || undefined)
+      : (modelInput.trim() || undefined);
+
     const res = await runAgentTask(agentType, taskPrompt.trim(), {
-      model: modelInput.trim() || undefined,
+      model: resolvedModel,
       onChunk: (chunk: string) => {
         if (!liveRef.current) return;
         setSnippet(prev => {
@@ -117,7 +150,7 @@ export function AgentScreen({ router }: AgentProps) {
       setRunError(res.error ?? 'Agent failed');
       setRunStatus('error');
     }
-  }, [agentType, taskPrompt, modelInput]);
+  }, [agentType, taskPrompt, modelInput, models, modelCursor]);
 
   useInput((char: string, key: Key) => {
     // ── Post-action overlays ──────────────────────────────────────────────────
@@ -187,11 +220,17 @@ export function AgentScreen({ router }: AgentProps) {
       return;
     }
     // model field
-    if (key.escape)  { setConfigField('agent'); return; }
-    if (key.tab)     { setConfigField('task'); return; }
-    if (key.return && taskPrompt.trim()) { void startAgent(); return; }
-    if (key.backspace || key.delete)    { setModelInput(p => p.slice(0, -1)); return; }
-    if (char && !key.ctrl && !key.meta) { setModelInput(p => p + char); return; }
+    if (key.escape) { setConfigField('agent'); return; }
+    if (key.tab)    { setConfigField('task');  return; }
+    if (models.length > 0) {
+      if (key.upArrow)   { setModelCursor(i => Math.max(0, i - 1)); return; }
+      if (key.downArrow) { setModelCursor(i => Math.min(models.length - 1, i + 1)); return; }
+      if (key.return && taskPrompt.trim()) { void startAgent(); return; }
+    } else {
+      if (key.return && taskPrompt.trim()) { void startAgent(); return; }
+      if (key.backspace || key.delete)    { setModelInput(p => p.slice(0, -1)); return; }
+      if (char && !key.ctrl && !key.meta) { setModelInput(p => p + char); return; }
+    }
   });
 
   // ── Configure view ────────────────────────────────────────────────────────
@@ -220,12 +259,42 @@ export function AgentScreen({ router }: AgentProps) {
         </Box>
 
         {/* Model */}
-        <Box>
-          <Text bold color={configField === 'model' ? 'cyan' : undefined}>{'Model     '}</Text>
-          <Text dimColor>[</Text>
-          <Text>{modelInput || (configField === 'model' ? '' : '(default)')}</Text>
-          {configField === 'model' && <Text color="cyan" bold>▌</Text>}
-          <Text dimColor>]</Text>
+        <Box flexDirection="column">
+          <Text bold color={configField === 'model' ? 'cyan' : undefined}>{'Model'}</Text>
+          {modelsLoading && (
+            <Text dimColor>  loading models…</Text>
+          )}
+          {!modelsLoading && models.length > 0 && (() => {
+            const SHOW = 3;
+            const start = Math.max(0, modelCursor - SHOW);
+            const end   = Math.min(models.length - 1, modelCursor + SHOW);
+            const rows  = [];
+            if (start > 0) rows.push(<Text key="top" dimColor>  …</Text>);
+            for (let i = start; i <= end; i++) {
+              const active = i === modelCursor;
+              const focused = configField === 'model';
+              rows.push(
+                <Box key={models[i].id}>
+                  <Text color={active && focused ? 'cyan' : undefined}>
+                    {active ? '  ❯ ' : '    '}
+                  </Text>
+                  <Text color={active && focused ? 'cyan' : undefined} bold={active && focused}>
+                    {models[i].id}
+                  </Text>
+                </Box>
+              );
+            }
+            if (end < models.length - 1) rows.push(<Text key="bot" dimColor>  …</Text>);
+            return <Box flexDirection="column">{rows}</Box>;
+          })()}
+          {!modelsLoading && models.length === 0 && (
+            <Box>
+              <Text dimColor>[</Text>
+              <Text>{modelInput || (configField === 'model' ? '' : '(default)')}</Text>
+              {configField === 'model' && <Text color="cyan" bold>▌</Text>}
+              <Text dimColor>]</Text>
+            </Box>
+          )}
         </Box>
 
         <Text dimColor>
@@ -233,9 +302,11 @@ export function AgentScreen({ router }: AgentProps) {
             ? '[tab/enter] next field  [esc] back'
             : configField === 'agent'
             ? '[←→] cycle agent  [tab/enter] next  [esc] back'
-            : canStart
-            ? '[enter] start  [tab] wrap  [esc] back'
-            : '[type a task first]  [tab] wrap  [esc] back'}
+            : models.length > 0
+            ? (canStart ? '[↑↓] pick model  [enter] start  [tab] wrap  [esc] back'
+                        : '[↑↓] pick model  [tab] wrap  [esc] back  (type a task first)')
+            : (canStart ? '[enter] start  [tab] wrap  [esc] back'
+                        : '[type a task first]  [tab] wrap  [esc] back')}
         </Text>
       </Box>
     );

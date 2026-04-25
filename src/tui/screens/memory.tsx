@@ -11,11 +11,12 @@ const MAX_VISIBLE = 12;
 interface MemoryProps {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   router: RouterApi;
+  onCaptureInput: (capture: boolean) => void;
 }
 
 type Mode = 'list' | 'search';
 
-export function MemoryScreen({ router: _router }: MemoryProps) {
+export function MemoryScreen({ router: _router, onCaptureInput }: MemoryProps) {
   const [namespaces, setNamespaces] = useState<string[]>([]);
   const [nsIdx, setNsIdx]           = useState(0);
   const [entries, setEntries]       = useState<MemoryEntry[]>([]);
@@ -78,10 +79,12 @@ export function MemoryScreen({ router: _router }: MemoryProps) {
         setSearchQuery('');
         reload(currentNs, '');
         setSelectedIdx(0);
+        onCaptureInput(false);
         return;
       }
       if (key.return) {
         setMode('list');
+        onCaptureInput(false);
         return;
       }
       if (key.backspace || key.delete) {
@@ -141,6 +144,7 @@ export function MemoryScreen({ router: _router }: MemoryProps) {
     if (char === '/') {
       setMode('search');
       setSearchQuery('');
+      onCaptureInput(true);
       return;
     }
 
