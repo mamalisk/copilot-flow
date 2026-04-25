@@ -259,18 +259,78 @@ async function runPhase(
         },
       }));
 
-      const results = await runSwarm(tasks, topology, {
+      const swarmResults = await runSwarm(tasks, topology, {
         onProgress: opts.stream
           ? (_taskId, agentType, chunk) =>
               process.stdout.write(`${streamPrefix}${agentBadge(agentType)} ${chunk}`)
           : undefined,
       });
 
-      const last = results.get(tasks[tasks.length - 1].id);
-      if (!last?.success) {
-        throw new Error(`Phase "${phase.id}" failed: ${last?.error ?? 'unknown error'}`);
+      if (topology === 'mesh' && tasks.length > 1) {
+        // Collect every agent's report independently
+        const reports: Array<{ task: SwarmTask; output: string }> = [];
+        const failed: string[] = [];
+        for (const task of tasks) {
+          const r = swarmResults.get(task.id);
+          if (r?.success) {
+            reports.push({ task, output: r.output });
+          } else {
+            failed.push(`${task.agentType} (${task.id}): ${r?.error ?? 'unknown'}`);
+          }
+        }
+
+        if (reports.length === 0) {
+          throw new Error(`Phase "${phase.id}" failed: all mesh agents failed. ${failed.join('; ')}`);
+        }
+        if (failed.length > 0) {
+          output.warn(`  [${phase.id}] ${failed.length} mesh agent(s) failed: ${failed.join('; ')}`);
+        }
+
+        // Concatenate individual reports (preserved verbatim regardless of consolidation outcome)
+        const agentSections = reports
+          .map((r, i) =>
+            `### Agent ${i + 1} — ${r.task.label ?? `${r.task.agentType} (${r.task.id})`}\n\n${r.output}`)
+          .join('\n\n---\n\n');
+
+        // Run a coordinator agent to synthesise a consolidated report from all individual outputs
+        const consolidationPrompt =
+          `You are consolidating independent reports from ${reports.length} parallel agents ` +
+          `who each worked on a separate part of the same phase.\n\n` +
+          `Phase description: ${phase.description}\n\n` +
+          `## Individual agent reports\n\n${agentSections}\n\n` +
+          `## Your task\n\n` +
+          `Produce a single consolidated report that:\n` +
+          `- Synthesises all findings into one coherent document\n` +
+          `- Preserves important detail from each agent's report\n` +
+          `- Resolves conflicts or overlaps between reports\n` +
+          `- Uses clear headings to organise the output`;
+
+        output.info(`  [${phase.id}] Consolidating ${reports.length} mesh agent report(s)…`);
+        const consolidation = await runAgentTask('coordinator', consolidationPrompt, {
+          model: resolveModel('coordinator', phase, cliModel, config),
+          timeoutMs: phaseTimeoutMs,
+          label: `${phase.id}/consolidator`,
+          instructionsContent: sessionExts.instructionsContent,
+        });
+
+        const consolidatedSection = consolidation.success
+          ? consolidation.output
+          : `*(consolidation failed — see individual reports below)*`;
+
+        if (!consolidation.success) {
+          output.warn(`  [${phase.id}] Consolidation step failed — individual reports preserved`);
+        }
+
+        phaseOutput =
+          `## Consolidated Report\n\n${consolidatedSection}\n\n` +
+          `---\n\n## Individual Agent Reports\n\n${agentSections}`;
+      } else {
+        const last = swarmResults.get(tasks[tasks.length - 1].id);
+        if (!last?.success) {
+          throw new Error(`Phase "${phase.id}" failed: ${last?.error ?? 'unknown error'}`);
+        }
+        phaseOutput = last.output;
       }
-      phaseOutput = last.output;
 
     } else {
       const agentType = phase.agentType ?? 'analyst';
