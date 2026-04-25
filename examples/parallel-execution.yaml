@@ -1,0 +1,202 @@
+version: "1"
+# Example: Parallel phase execution
+#
+# copilot-flow exec uses wave-based topological scheduling: all phases whose
+# dependsOn list is fully satisfied are launched concurrently in the same wave.
+# This example is designed so the dependency graph creates four explicit waves,
+# maximising throughput on an e-commerce platform build.
+#
+# Dependency graph and waves:
+#
+#   Wave 1 (parallel):  research  ──────────────────────────────┐
+#                       ux-design ──────────────────────────────┤
+#                                                                ▼
+#   Wave 2 (parallel):  api-design   ← research, ux-design ─────┐
+#                       data-model   ← research             ─────┤
+#                                                                ▼
+#   Wave 3 (parallel):  checkout-api    ← api-design, data-model ┐
+#                       product-api     ← api-design, data-model ┤
+#                       user-api        ← api-design, data-model ┤
+#                       storefront-ui   ← api-design, ux-design  ┤
+#                       admin-ui        ← api-design, ux-design  ┤
+#                                                                ▼
+#   Wave 4 (parallel):  integration-tests ← all Wave 3           ┐
+#                       performance       ← checkout/product-api ┤
+#                       security-audit    ← all Wave 3           ┤
+#                                                                ▼
+#   Wave 5:             final-review    ← all Wave 4
+#
+# Run with streaming so you can see which phases are active simultaneously:
+#   copilot-flow exec examples/parallel-execution.yaml --stream
+#
+# To run only the fast design phases first and inspect before committing:
+#   copilot-flow exec examples/parallel-execution.yaml \
+#     --phase research --phase ux-design
+#
+# Then continue the rest:
+#   copilot-flow exec examples/parallel-execution.yaml --stream
+
+phases:
+  # ════════════════════════════════════════════════════════════════════════════
+  # WAVE 1 — no dependencies → both phases start immediately in parallel
+  # ════════════════════════════════════════════════════════════════════════════
+
+  - id: research
+    description: >
+      Research e-commerce platform requirements: typical feature set (product
+      catalogue, cart, checkout, order management, user accounts), common
+      third-party integrations (Stripe, Algolia, SendGrid), scalability
+      considerations, and modern tech-stack options.
+    type: agent
+    agentType: researcher
+    timeoutMs: 900000   # 15 min
+
+  - id: ux-design
+    description: >
+      Design the UX flows for the e-commerce storefront: product listing page,
+      product detail page, cart drawer, checkout (3-step), order confirmation,
+      and user account area.  Produce wireframe descriptions and a component
+      inventory; no visual assets needed — text descriptions and ASCII
+      layout sketches are sufficient.
+    type: agent
+    agentType: analyst
+    timeoutMs: 900000   # 15 min
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # WAVE 2 — starts once Wave 1 is fully complete
+  # ════════════════════════════════════════════════════════════════════════════
+
+  - id: api-design
+    description: >
+      Design the REST API for the e-commerce platform informed by the research
+      and UX flows: resource definitions, endpoint catalogue (method + path +
+      request/response shapes), authentication strategy, pagination convention,
+      and error envelope format.  Produce an OpenAPI-style specification in
+      markdown.
+    type: agent
+    agentType: architect
+    dependsOn: [research, ux-design]
+    timeoutMs: 1800000  # 30 min — architecture phase benefits from more time
+
+  - id: data-model
+    description: >
+      Design the PostgreSQL data model for the e-commerce platform: entities
+      (products, variants, categories, users, addresses, orders, order-items,
+      payments), relationships, indexes, and soft-delete strategy.  Produce
+      CREATE TABLE statements and an entity-relationship description.
+    type: agent
+    agentType: architect
+    dependsOn: [research]    # only needs research, not ux-design
+                             # → runs in parallel with api-design
+    timeoutMs: 1800000
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # WAVE 3 — all five phases start as soon as Wave 2 completes
+  #          (api-design and data-model must both be done first)
+  # ════════════════════════════════════════════════════════════════════════════
+
+  - id: checkout-api
+    description: >
+      Implement the checkout and payments service: cart-to-order conversion
+      endpoint, Stripe payment-intent creation, webhook handler for payment
+      confirmation, and order-status update.  Use the API contract and data
+      model from previous phases.
+    type: agent
+    agentType: coder
+    dependsOn: [api-design, data-model]
+    timeoutMs: 1800000
+
+  - id: product-api
+    description: >
+      Implement the product catalogue service: CRUD for products and variants,
+      category tree management, full-text search endpoint (mocked Algolia
+      integration), inventory tracking, and image-URL storage.
+    type: agent
+    agentType: coder
+    dependsOn: [api-design, data-model]
+    timeoutMs: 1800000
+
+  - id: user-api
+    description: >
+      Implement the user accounts service: registration, login (JWT), token
+      refresh, logout, address book CRUD, and order-history endpoint.  Include
+      password hashing and input validation.
+    type: agent
+    agentType: coder
+    dependsOn: [api-design, data-model]
+    timeoutMs: 1800000
+
+  - id: storefront-ui
+    description: >
+      Implement the React storefront: product listing with filters, product
+      detail page, cart drawer (Zustand store), checkout flow (3 steps), and
+      order confirmation page.  Consume the REST API defined in api-design.
+      Use Tailwind CSS for styling.
+    type: agent
+    agentType: coder
+    dependsOn: [api-design, ux-design]  # no data-model dependency
+                                         # → can start as soon as api-design + ux-design are done
+    timeoutMs: 1800000
+
+  - id: admin-ui
+    description: >
+      Implement the React admin dashboard: product and inventory management
+      tables, order queue with status updates, and basic analytics cards
+      (revenue, orders, conversion).  Consume the same REST API.
+    type: agent
+    agentType: coder
+    dependsOn: [api-design, ux-design]
+    timeoutMs: 1800000
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # WAVE 4 — starts once all Wave 3 phases are done
+  # ════════════════════════════════════════════════════════════════════════════
+
+  - id: integration-tests
+    description: >
+      Write integration tests covering the critical cross-service paths: full
+      checkout flow (product → cart → checkout → payment webhook → order
+      confirmation), user registration → login → place order, and admin order
+      status update visible in the storefront.  Use supertest or similar.
+    type: agent
+    agentType: tester
+    dependsOn: [checkout-api, product-api, user-api, storefront-ui, admin-ui]
+    timeoutMs: 1800000
+
+  - id: performance
+    description: >
+      Analyse the checkout and product APIs for performance bottlenecks: missing
+      database indexes, N+1 query patterns, payload bloat, and missing caching
+      opportunities.  Produce a prioritised list of optimisations with expected
+      impact.
+    type: agent
+    agentType: performance-engineer
+    dependsOn: [checkout-api, product-api]   # only needs the two APIs, not UI
+                                              # → runs in parallel with integration-tests
+    timeoutMs: 1800000
+
+  - id: security-audit
+    description: >
+      Audit the full platform for security issues: injection risks in the
+      product/user/checkout APIs, authentication and authorisation gaps,
+      insecure direct object references in order endpoints, secrets in source,
+      and frontend XSS vectors.  Produce a findings report with severity ratings.
+    type: agent
+    agentType: security-auditor
+    dependsOn: [checkout-api, product-api, user-api, storefront-ui, admin-ui]
+    timeoutMs: 1800000
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # WAVE 5 — final gate; waits for every Wave 4 phase
+  # ════════════════════════════════════════════════════════════════════════════
+
+  - id: final-review
+    description: >
+      Review the complete e-commerce platform: verify consistency between the
+      API design and implementations, confirm all UX flows are covered by the
+      storefront, summarise open security findings, and produce a go/no-go
+      recommendation with a short punch-list of must-fix items before launch.
+    type: agent
+    agentType: reviewer
+    dependsOn: [integration-tests, performance, security-audit]
+    timeoutMs: 1800000

@@ -1,0 +1,134 @@
+version: "1"
+# Example: Memory storage + per-phase model selection
+#
+# This pipeline demonstrates two orthogonal features that compose well:
+#
+#   1. Cross-run memory  — run with --memory-namespace <your-project> and each
+#      phase's output is distilled into SQLite; the next phase (and future runs)
+#      automatically receive the most relevant facts as context.  contextTags
+#      narrows which stored facts are injected into each phase so agents are not
+#      flooded with irrelevant context.
+#
+#   2. Per-phase model selection — cheap/fast models for broad research and
+#      routine code generation; a more capable reasoning model for the phases
+#      where getting the decision right matters most (architecture, security).
+#      This keeps cost and latency under control without sacrificing quality on
+#      the critical path.
+#
+# Run (first time — no stored memory yet):
+#   copilot-flow exec examples/memory-and-models.yaml \
+#     --memory-namespace my-project \
+#     --stream
+#
+# Run again later — stored facts from previous runs are automatically injected:
+#   copilot-flow exec examples/memory-and-models.yaml \
+#     --memory-namespace my-project \
+#     --stream
+#
+# Inspect what has been stored:
+#   copilot-flow memory list --namespace my-project
+#   copilot-flow memory search --namespace my-project "authentication"
+#
+# Tip: pre-seed memory with a project identity so every phase knows the
+# target stack and constraints without re-discovering them each time:
+#   copilot-flow memory store \
+#     --namespace my-project \
+#     --key stack \
+#     --value "Node.js 22, PostgreSQL 16, React 19, deployed on AWS ECS" \
+#     --importance 5 --type decision --tags architecture,constraint
+
+phases:
+  # ── Phase 1: Research ────────────────────────────────────────────────────────
+  # Fast, broad model — we want wide coverage, not deep reasoning.
+  - id: research
+    description: >
+      Research best practices, common pitfalls, and relevant libraries for
+      building a real-time collaborative document editor (Google Docs-style):
+      operational transforms vs CRDTs, WebSocket vs SSE, persistence strategies,
+      and conflict resolution.  Produce a structured findings document.
+    type: agent
+    agentType: researcher
+    model: gpt-4o-mini        # fast + cheap — good for information gathering
+    timeoutMs: 900000         # 15 min
+
+  # ── Phase 2: Architecture ────────────────────────────────────────────────────
+  # Reasoning-capable model — architecture decisions have long-lived consequences.
+  # contextTags ensures only facts tagged 'architecture' or 'constraint' from
+  # memory are injected, keeping the prompt focused.
+  - id: architecture
+    description: >
+      Design the system architecture for the collaborative editor based on the
+      research findings.  Produce: a component diagram (ASCII or Mermaid), API
+      contracts for the WebSocket protocol, a data model for documents and
+      operations, and a rationale section explaining key technology choices.
+    type: agent
+    agentType: architect
+    model: o3-mini            # reasoning model — trade-off analysis benefits from it
+    dependsOn: [research]
+    timeoutMs: 1800000        # 30 min — reasoning models think before responding
+    contextTags: [architecture, constraint, decision]
+
+  # ── Phase 3: Backend implementation ─────────────────────────────────────────
+  # Standard capable model — code generation with clear spec input.
+  # contextTags pulls in 'code' and 'architecture' facts: stored API contracts,
+  # data model decisions, and any prior implementation notes.
+  - id: backend
+    description: >
+      Implement the Node.js backend for the collaborative editor: WebSocket
+      server, CRDT/OT operation handler, PostgreSQL persistence layer, and REST
+      endpoints for document CRUD.  Follow the architecture document produced in
+      the previous phase.
+    type: agent
+    agentType: coder
+    model: gpt-4o             # standard capable model for implementation
+    dependsOn: [architecture]
+    timeoutMs: 1800000        # 30 min
+    contextTags: [architecture, code, api]
+
+  # ── Phase 4: Frontend implementation ────────────────────────────────────────
+  # Same model tier as backend — symmetric cost allocation.
+  - id: frontend
+    description: >
+      Implement the React frontend for the collaborative editor: rich-text editor
+      component (ProseMirror or TipTap), WebSocket client with reconnect logic,
+      presence indicators (cursor positions, user avatars), and optimistic local
+      updates with server reconciliation.
+    type: agent
+    agentType: coder
+    model: gpt-4o
+    dependsOn: [architecture]   # depends on architecture, NOT backend
+                                # → runs in parallel with backend once architecture is done
+    timeoutMs: 1800000
+    contextTags: [architecture, code, api]
+
+  # ── Phase 5: Security audit ──────────────────────────────────────────────────
+  # Upgraded model — security review is a critical gate; false negatives are costly.
+  # contextTags narrows to security and architecture facts so the auditor sees
+  # prior threat-model decisions without the full implementation noise.
+  - id: security
+    description: >
+      Audit the backend and frontend for security issues: authentication/
+      authorisation of WebSocket connections, data validation, injection risks,
+      secret management, and rate limiting.  Produce a findings report with
+      severity ratings and remediation steps.
+    type: agent
+    agentType: security-auditor
+    model: o3-mini            # reasoning model for security — thoroughness > speed
+    dependsOn: [backend, frontend]
+    timeoutMs: 1800000
+    contextTags: [security, architecture, constraint]
+
+  # ── Phase 6: Documentation ───────────────────────────────────────────────────
+  # Cheapest capable model — doc writing does not require deep reasoning.
+  # Runs in parallel with security since it only needs backend + frontend output.
+  - id: docs
+    description: >
+      Write the developer README for the collaborative editor project: setup
+      instructions, environment variables, running locally, running tests,
+      WebSocket protocol reference, and a contributing guide.
+    type: agent
+    agentType: documenter
+    model: gpt-4o-mini        # doc writing is largely formatting — no need for o3
+    dependsOn: [backend, frontend]
+    timeoutMs: 900000         # 15 min
+    contextTags: [code, api, architecture]

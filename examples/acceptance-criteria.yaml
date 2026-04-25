@@ -1,0 +1,105 @@
+version: "1"
+# Example: Acceptance-criteria pipeline
+#
+# Each phase carries explicit acceptance criteria evaluated by a reviewer agent
+# after the main agent finishes.  If the criteria are not met the phase is
+# automatically retried (up to maxAcceptanceRetries times) before the pipeline
+# halts.  This loop is sometimes called the "Ralph Wiggum" loop — it keeps
+# running until the output is actually correct, not just present.
+#
+# timeoutMs is set generously (30 min per phase) because:
+#   • the coder phase may need multiple tool calls to produce working code
+#   • the reviewer sub-agent that evaluates acceptance criteria also consumes
+#     time, so the effective budget is ~2× the nominal phase time
+#
+# Run:
+#   copilot-flow exec examples/acceptance-criteria.yaml --stream
+#
+# Re-run a single failing phase without re-running the whole pipeline:
+#   copilot-flow exec examples/acceptance-criteria.yaml --phase implement --force
+
+phases:
+  # ── Phase 1: Requirements analysis ──────────────────────────────────────────
+  - id: requirements
+    description: >
+      Analyse the task of building a user-authentication REST API (register,
+      login, logout, refresh-token) and produce a concise requirements document:
+      endpoints, request/response shapes, error codes, and security constraints.
+    type: agent
+    agentType: analyst
+    timeoutMs: 1800000   # 30 min
+    acceptanceCriteria: >
+      The output MUST include:
+      - All four endpoints (POST /register, POST /login, POST /logout,
+        POST /auth/refresh) with method, path, request body, and response body.
+      - HTTP status codes for both success and error cases on every endpoint.
+      - At least one security constraint (e.g. password hashing, token expiry).
+      - A section listing what is explicitly OUT of scope.
+      Output must be structured markdown with headings, not a prose paragraph.
+    maxAcceptanceRetries: 3
+
+  # ── Phase 2: Implementation ──────────────────────────────────────────────────
+  - id: implement
+    description: >
+      Implement the authentication REST API described in the requirements phase.
+      Use Node.js / Express with TypeScript.  Produce complete source files —
+      router, controller, service, and a minimal in-memory user store — plus a
+      README section explaining how to run the server locally.
+    type: agent
+    agentType: coder
+    dependsOn: [requirements]
+    timeoutMs: 1800000   # 30 min — coder may iterate several times on tool calls
+    acceptanceCriteria: >
+      PASS only if ALL of the following are true:
+      1. TypeScript source files are present for router, controller, and service
+         layers (at minimum).
+      2. Password storage uses a hashing function (bcrypt, argon2, or similar) —
+         plain-text passwords are an automatic FAIL.
+      3. Token generation is present (JWT or equivalent).
+      4. A README section explains how to start the server (npm command or
+         equivalent).
+      5. No TODO comments are left in security-critical paths.
+    maxAcceptanceRetries: 3
+
+  # ── Phase 3: Test suite ──────────────────────────────────────────────────────
+  - id: tests
+    description: >
+      Write a comprehensive test suite for the authentication API implemented in
+      the previous phase.  Cover the happy path and at least two error paths per
+      endpoint.  Use vitest or jest; mock external I/O where appropriate.
+    type: agent
+    agentType: tester
+    dependsOn: [implement]
+    timeoutMs: 1800000   # 30 min
+    acceptanceCriteria: >
+      PASS only if ALL of the following are true:
+      1. Tests are present for all four endpoints.
+      2. Each endpoint has at least one happy-path test AND at least two
+         error-path tests (e.g. missing fields, duplicate user, wrong password).
+      3. Tests import and exercise actual implementation code — no tests that
+         only assert constants or trivially pass.
+      4. The test file(s) can be run with a single `npm test` or `npx vitest`
+         command (no bespoke setup required).
+    maxAcceptanceRetries: 3
+
+  # ── Phase 4: Security audit ──────────────────────────────────────────────────
+  - id: security
+    description: >
+      Perform a security audit of the authentication API implementation and its
+      tests.  Identify OWASP Top 10 risks, insecure defaults, and gaps between
+      the requirements document and the implementation.
+    type: agent
+    agentType: security-auditor
+    dependsOn: [implement, tests]
+    timeoutMs: 1800000   # 30 min
+    acceptanceCriteria: >
+      The audit report MUST:
+      1. Reference the OWASP Top 10 explicitly, noting which items are
+         mitigated and which are not yet addressed.
+      2. Call out any discrepancy between the requirements (from the
+         requirements phase) and the implementation.
+      3. Assign a severity (Critical / High / Medium / Low) to each finding.
+      4. Include at least one actionable remediation recommendation per finding.
+      If zero findings are reported the reviewer must verify the audit
+      actually checked the implementation and was not a rubber-stamp.
+    maxAcceptanceRetries: 2

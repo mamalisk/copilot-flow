@@ -498,6 +498,33 @@ The full memory system — importance scoring, BM25 search, layered injection, T
 
 ---
 
+## Examples
+
+Ready-to-run `phases.yaml` files in the [`examples/`](examples/) folder:
+
+| File | Demonstrates |
+|------|-------------|
+| [`examples/acceptance-criteria.yaml`](examples/acceptance-criteria.yaml) | Per-phase acceptance criteria with generous timeouts — each phase is evaluated by a reviewer agent and automatically retried until it passes (the "Ralph Wiggum" loop) |
+| [`examples/memory-and-models.yaml`](examples/memory-and-models.yaml) | Cross-run memory via `--memory-namespace`, `contextTags` for per-phase fact filtering, and choosing the right model tier (fast/cheap vs reasoning) per phase |
+| [`examples/parallel-execution.yaml`](examples/parallel-execution.yaml) | Wave-based parallel execution — five backend and frontend phases run concurrently in Wave 3, three audit phases run concurrently in Wave 4, with a single final-review gate |
+
+**Quick start:**
+
+```bash
+# Acceptance-criteria pipeline (auth API with retry loops)
+copilot-flow exec examples/acceptance-criteria.yaml --stream
+
+# Memory + model selection (collaborative editor)
+copilot-flow exec examples/memory-and-models.yaml \
+  --memory-namespace my-project \
+  --stream
+
+# Parallel e-commerce platform build
+copilot-flow exec examples/parallel-execution.yaml --stream
+```
+
+---
+
 ## Attribution
 
 > copilot-flow is inspired by **[Ruflo (claude-flow)](https://github.com/ruvnet/claude-flow)** — the multi-agent orchestration framework for Claude. copilot-flow brings the same swarm coordination patterns to the GitHub Copilot ecosystem.
