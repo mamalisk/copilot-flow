@@ -16,6 +16,15 @@ import { SpecScreen } from './screens/spec.js';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { version } = require('../../package.json') as { version: string };
 
+const LOGO = [
+  '  ██████╗        ███████╗ ██╗       ██████╗  ██╗    ██╗',
+  ' ██╔════╝        ██╔════╝ ██║      ██╔═══██╗ ██║    ██║',
+  ' ██║      █████╗ █████╗   ██║      ██║   ██║ ██║ █╗ ██║',
+  ' ██║      ╚════╝ ██╔══╝   ██║      ██║   ██║ ██║███╗██║',
+  ' ╚██████╗        ██║      ███████╗ ╚██████╔╝ ╚███╔███╔╝',
+  '  ╚═════╝        ╚═╝      ╚══════╝  ╚═════╝   ╚══╝╚══╝',
+];
+
 interface AppProps {
   initialScreen?: ScreenName;
 }
@@ -58,14 +67,18 @@ export function App({ initialScreen = 'home' }: AppProps) {
     : 'home';
 
   return (
-    <Box flexDirection="column">
-      {/* Header */}
-      <Box justifyContent="space-between" paddingX={1}>
-        <Box>
-          <Text color="yellow" bold>⬡ </Text>
-          <Text bold color="cyan">copilot-flow</Text>
-        </Box>
-        <Text dimColor>{breadcrumb}  v{version}</Text>
+    <Box flexDirection="column" paddingTop={1}>
+      {/* Logo */}
+      <Box flexDirection="column" paddingX={1}>
+        {LOGO.map((line, i) => (
+          <Text key={i} color="blue" bold>{line}</Text>
+        ))}
+      </Box>
+
+      {/* Breadcrumb + version */}
+      <Box justifyContent="space-between" paddingX={1} marginTop={1}>
+        <Text dimColor>{breadcrumb}</Text>
+        <Text dimColor>v{version}</Text>
       </Box>
 
       <Text dimColor>{divider}</Text>

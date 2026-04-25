@@ -24,7 +24,6 @@ export function HomeScreen({ router: _router }: HomeProps) {
   return (
     <Box flexDirection="column" gap={1}>
       <Box flexDirection="column">
-        <Text bold color="cyan">copilot-flow TUI</Text>
         <Text dimColor>Adaptive multi-agent orchestration — getting smarter with every run.</Text>
       </Box>
 
