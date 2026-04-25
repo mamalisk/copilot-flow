@@ -4,6 +4,7 @@ import { Command } from 'commander';
 import matter from 'gray-matter';
 import { runAgentTask } from '../agents/executor.js';
 import { agentPool } from '../agents/pool.js';
+import { registerEventLog } from '../hooks/event-log.js';
 import { listAgentTypes, routeTask } from '../agents/registry.js';
 import { output, agentBadge, printTable, setLogLevel, withSpinner } from '../output.js';
 import { loadConfig } from '../config.js';
@@ -150,6 +151,7 @@ export function registerAgent(program: Command): void {
       const taskWithMemory = memoryContext + task;
 
       output.info(`${agentBadge(agentType)} Running: ${task.slice(0, 80)}`);
+      registerEventLog();
 
       const runTask = () => runAgentTask(agentType, taskWithMemory, {
         model: opts.model ?? config.agents.models?.[agentType] ?? config.defaultModel,

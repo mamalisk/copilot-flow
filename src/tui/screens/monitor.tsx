@@ -1,19 +1,14 @@
 import { useState, useEffect, useRef } from 'react';
 import { Box, Text, useInput, type Key } from 'ink';
-import { globalHooks } from '../../hooks/registry.js';
+import fs from 'fs';
+import { LOG_PATH } from '../../hooks/event-log.js';
 import type { HookEvent } from '../../types.js';
 import type { RouterApi } from '../router.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const VISIBLE_ROWS = 15;
-
-const ALL_HOOK_EVENTS: HookEvent[] = [
-  'pre-task', 'post-task',
-  'session-start', 'session-end',
-  'agent-spawn', 'agent-terminate',
-  'swarm-start', 'swarm-end',
-];
+const POLL_MS = 1_000;
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -128,22 +123,38 @@ export function MonitorScreen({ router }: MonitorProps) {
   const [filter,  setFilter]  = useState<'all' | 'errors'>('all');
   const [scroll,  setScroll]  = useState(0);
 
-  const idRef     = useRef(0);
-  const frozenRef = useRef(false);
+  const idRef       = useRef(0);
+  const frozenRef   = useRef(false);
+  const lineCountRef = useRef(0);
 
-  // Register on all hook events — use a ref so the closure never goes stale
+  // Poll events.jsonl for new lines every second.
+  // Works across processes: CLI commands write via registerEventLog(),
+  // TUI-triggered tasks write via the same handler registered in launch.ts.
   useEffect(() => {
-    const unsubs = ALL_HOOK_EVENTS.map(evt =>
-      globalHooks.on(evt, async (ctx) => {
-        if (frozenRef.current) return;
-        setEvents(prev => [
-          ...prev,
-          { id: idRef.current++, ts: ctx.timestamp, event: evt, data: ctx.data },
-        ].slice(-500));
-        setScroll(0); // jump to tail on new event
-      }),
-    );
-    return () => unsubs.forEach(fn => fn());
+    const readNew = () => {
+      if (frozenRef.current) return;
+      try {
+        if (!fs.existsSync(LOG_PATH)) return;
+        const content = fs.readFileSync(LOG_PATH, 'utf-8');
+        const lines = content.split('\n').filter(l => l.trim());
+        if (lines.length <= lineCountRef.current) return;
+        const newLines = lines.slice(lineCountRef.current);
+        lineCountRef.current = lines.length;
+        const newEvents = newLines.flatMap(line => {
+          try {
+            const p = JSON.parse(line) as { event: HookEvent; ts: number; data: unknown };
+            return [{ id: idRef.current++, ts: p.ts, event: p.event, data: p.data } as MonitorEvent];
+          } catch { return []; }
+        });
+        if (newEvents.length === 0) return;
+        setEvents(prev => [...prev, ...newEvents].slice(-500));
+        setScroll(0);
+      } catch { /* file not yet created or transient read error */ }
+    };
+
+    readNew(); // populate with existing history on mount
+    const intervalId = setInterval(readNew, POLL_MS);
+    return () => clearInterval(intervalId);
   }, []);
 
   useInput((char: string, key: Key) => {

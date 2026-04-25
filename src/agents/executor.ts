@@ -13,6 +13,7 @@ import { classifyError } from '../core/error-handler.js';
 import { output } from '../output.js';
 import { hooks } from '../hooks/executor.js';
 import { getAgentDefinition } from './registry.js';
+import { agentPool } from './pool.js';
 import { appendLesson } from '../memory/inject.js';
 import type { AgentType, AgentResult } from '../types.js';
 import type { RetryConfig } from '../core/retry.js';
@@ -87,6 +88,7 @@ export async function runAgentTask(
   // label such as "coder/task-2" or "analyst/design" so parallel agents are
   // distinguishable. Defaults to the bare agent type for single-agent runs.
   const displayLabel = options.label ?? agentType;
+  const agentId = `${agentType}-${startTime}`;
 
   const onRetry = (err: Error, attempt: number, nextDelay: number) => {
     output.warn(
@@ -100,6 +102,8 @@ export async function runAgentTask(
 
   try {
     void hooks.preTask({ agentType, label: displayLabel });
+
+    agentPool.register({ id: agentId, type: agentType, sessionId: '', status: 'busy', task: task.slice(0, 200), startedAt: startTime });
 
     const output_text = await withRetry(
       async () => {
@@ -233,10 +237,11 @@ export async function runAgentTask(
     );
 
     await hooks.postTask({ agentType, label: displayLabel, success: true, durationMs: Date.now() - startTime, attempts, promptChars: task.length, responseChars: output_text.length, model, sessionId, toolsInvoked });
+    agentPool.update(agentId, { sessionId, status: 'idle', completedAt: Date.now() });
 
     return {
       agentType,
-      agentId: `${agentType}-${Date.now()}`,
+      agentId,
       sessionId,
       output: output_text,
       durationMs: Date.now() - startTime,
@@ -247,6 +252,7 @@ export async function runAgentTask(
     const classified = classifyError(err);
     output.error(`[${displayLabel}] Failed after ${attempts} attempt(s): ${classified.message}`);
     await hooks.postTask({ agentType, label: displayLabel, success: false, durationMs: Date.now() - startTime, attempts, promptChars: task.length, responseChars: 0, model, sessionId, toolsInvoked, error: classified.message });
+    agentPool.update(agentId, { sessionId, status: 'error', completedAt: Date.now(), error: classified.message });
     // Record a permanent lesson so future runs know this agent/task combination fails
     appendLesson(
       agentType,
@@ -271,7 +277,7 @@ export async function runAgentTask(
 
     return {
       agentType,
-      agentId: `${agentType}-${Date.now()}`,
+      agentId,
       sessionId,
       output: '',
       durationMs: Date.now() - startTime,

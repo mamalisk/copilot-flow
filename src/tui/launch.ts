@@ -12,12 +12,14 @@ import { createElement } from 'react';
 import { render } from 'ink';
 import { App } from './app.js';
 import { setLogLevel } from '../output.js';
+import { registerEventLog } from '../hooks/event-log.js';
 import type { ScreenName } from './router.js';
 
 export async function launch(initialScreen: ScreenName): Promise<void> {
   // Suppress all console output from the package so ink's rendering is not
   // interrupted by chalk/ora writes from runAgentTask, runSwarm, etc.
   setLogLevel('silent');
+  registerEventLog();
 
   // Switch to the terminal's alternate screen buffer — a blank slate separate
   // from scroll history.  Without this, previous renders bleed through when

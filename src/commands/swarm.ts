@@ -4,6 +4,7 @@ import { Command } from 'commander';
 import matter from 'gray-matter';
 import { runSwarm } from '../swarm/coordinator.js';
 import { routeTask } from '../agents/registry.js';
+import { registerEventLog } from '../hooks/event-log.js';
 import { output, agentBadge } from '../output.js';
 import { loadConfig, saveConfig } from '../config.js';
 import { clientManager } from '../core/client-manager.js';
@@ -159,6 +160,7 @@ export function registerSwarm(program: Command): void {
       output.header(`Swarm: ${effectiveTopology}`);
       output.dim(`Pipeline: ${tasks.map(t => t.agentType).join(' → ')}`);
       output.blank();
+      registerEventLog();
 
       const results = await runSwarm(tasks, effectiveTopology, {
         onProgress: opts.stream
