@@ -17,6 +17,7 @@ import { registerPlan } from './plan.js';
 import { registerExec } from './exec.js';
 import { registerTui } from './tui.js';
 import { registerTelemetry } from './telemetry.js';
+import { registerSpec } from './spec.js';
 import { registerTelemetryCollector } from '../telemetry/collector.js';
 import { isInitialised, ensureRuntimeDirs, saveConfig, DEFAULT_CONFIG } from '../config.js';
 import { output } from '../output.js';
@@ -44,6 +45,7 @@ registerPlan(program);
 registerExec(program);
 registerTui(program);
 registerTelemetry(program);
+registerSpec(program);
 
 // Register the telemetry collector so every agent run is recorded automatically.
 registerTelemetryCollector();
