@@ -130,8 +130,8 @@ export function SpecScreen({ router }: SpecProps) {
     // Quit
     if (key.ctrl && char === 'c') { exit(); return; }
 
-    // Ctrl+I — trigger AI spec improvement
-    if (key.ctrl && char === 'i') {
+    // Ctrl+R — trigger AI spec improvement (Ctrl+I = Tab in terminals, unusable)
+    if (key.ctrl && char === 'r') {
       setOriginalLines([...lines]);
       setSavedPath('');
       setImproveStatus('improving');
@@ -346,7 +346,7 @@ export function SpecScreen({ router }: SpecProps) {
               <Text color="green">{`✓ Saved → ${savedPath}`}</Text>
             )}
             <Text dimColor>
-              {`Ln ${cursor.ln + 1}  Col ${cursor.col + 1}  |  Ctrl+I → improve  |  Ctrl+S → save  |  Ctrl+P → plan  |  Esc → back  |  Ctrl+C → quit`}
+              {`Ln ${cursor.ln + 1}  Col ${cursor.col + 1}  |  Ctrl+R → improve  |  Ctrl+S → save  |  Ctrl+P → plan  |  Esc → back  |  Ctrl+C → quit`}
             </Text>
           </Box>
         )}
