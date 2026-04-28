@@ -316,7 +316,8 @@ export function registerInit(program: Command): void {
       let agentsCreated = 0;
       for (const [type, def] of Object.entries(AGENT_REGISTRY) as [AgentType, typeof AGENT_REGISTRY[AgentType]][]) {
         const filePath = path.join(AGENTS_DIR, `${type}.md`);
-        if (writeIfAbsent(filePath, def.systemMessage + '\n')) {
+        const content = `---\nname: ${type}\ndescription: ${def.description}\n---\n${def.systemMessage}\n`;
+        if (writeIfAbsent(filePath, content)) {
           agentsCreated++;
         }
       }
