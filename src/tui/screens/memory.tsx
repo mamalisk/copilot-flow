@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Box, Text, useInput, type Key } from 'ink';
 import { isInitialised } from '../../config.js';
 import { getMemoryStore } from '../../memory/store.js';
+import { appendLesson } from '../../memory/inject.js';
 import type { MemoryEntry } from '../../types.js';
 import type { RouterApi } from '../router.js';
 
@@ -27,6 +28,7 @@ export function MemoryScreen({ router: _router, onCaptureInput }: MemoryProps) {
   const [error, setError]           = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [lastDeleted, setLastDeleted] = useState('');
+  const [lastPromoted, setLastPromoted] = useState('');
 
   // Load namespaces once on mount
   useEffect(() => {
@@ -151,6 +153,14 @@ export function MemoryScreen({ router: _router, onCaptureInput }: MemoryProps) {
     // [d] — delete selected
     if (char === 'd' && entries.length > 0) {
       setDeleteConfirm(true);
+      setLastDeleted('');
+      return;
+    }
+
+    // [p] — promote selected entry to _global lessons file
+    if (char === 'p' && selected) {
+      appendLesson('_global', selected.key, selected.value);
+      setLastPromoted(selected.key);
       setLastDeleted('');
       return;
     }
@@ -299,8 +309,11 @@ export function MemoryScreen({ router: _router, onCaptureInput }: MemoryProps) {
           {lastDeleted !== '' && (
             <Text color="green">✓ Deleted &quot;{lastDeleted}&quot;</Text>
           )}
+          {lastPromoted !== '' && (
+            <Text color="cyan">✓ Promoted &quot;{lastPromoted}&quot; → .github/lessons/_global.md</Text>
+          )}
           <Text dimColor>
-            [↑↓] navigate  [n/N] namespace  [/] search  [d] delete  [esc] back
+            [↑↓] navigate  [n/N] namespace  [/] search  [p] promote  [d] delete  [esc] back
           </Text>
         </Box>
       )}

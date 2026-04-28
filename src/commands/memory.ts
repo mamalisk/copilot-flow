@@ -2,9 +2,10 @@ import { Command } from 'commander';
 import { mkdirSync, existsSync, writeFileSync } from 'fs';
 import { getMemoryStore } from '../memory/store.js';
 import { lintMemory } from '../memory/lint.js';
+import { appendLesson } from '../memory/inject.js';
 import { output, printTable } from '../output.js';
 import { loadConfig } from '../config.js';
-import type { MemoryType } from '../types.js';
+import type { MemoryEntry, MemoryType } from '../types.js';
 
 const MEMORY_PROMPT_FILE = '.github/memory-prompt.md';
 
@@ -168,6 +169,36 @@ export function registerMemory(program: Command): void {
           `Lint complete: ${report.kept} kept, ${report.deleted} deleted, ` +
           `${report.merged} merged, ${report.updated} updated, ${report.promoted} promoted`,
         );
+      }
+    });
+
+  // ── memory promote ────────────────────────────────────────────────────────
+  memory
+    .command('promote')
+    .description('Promote stored entries to a permanent lesson file')
+    .requiredOption('--namespace <ns>', 'Memory namespace')
+    .option('--key <key>', 'Specific entry key to promote')
+    .option('--min-importance <n>', 'Promote all entries with importance ≥ n (1–5)', '4')
+    .option('--agent-type <type>', 'Target lesson file — agent type or "_global"', '_global')
+    .action((opts: { namespace: string; key?: string; minImportance: string; agentType: string }) => {
+      const store   = getMemoryStore();
+      const minImp  = parseInt(opts.minImportance, 10);
+      const entries = store.list(opts.namespace);
+
+      let targets: MemoryEntry[];
+      if (opts.key) {
+        const match = entries.find(e => e.key === opts.key);
+        if (!match) { output.warn(`Not found: ${opts.namespace}/${opts.key}`); process.exit(1); }
+        targets = [match];
+      } else {
+        targets = entries.filter(e => e.importance >= minImp && e.type !== 'workflow-state');
+      }
+
+      if (targets.length === 0) { output.warn('No entries matched.'); return; }
+
+      for (const e of targets) {
+        appendLesson(opts.agentType, e.key, e.value);
+        output.success(`Promoted → .github/lessons/${opts.agentType}.md: ${e.key}`);
       }
     });
 

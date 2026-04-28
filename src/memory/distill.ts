@@ -136,8 +136,10 @@ export async function distillToMemory(
         },
       );
 
-      // Promote to permanent lesson file — survives TTL and memory clear
-      if (isLesson) {
+      // Promote to permanent lesson file — survives TTL and memory clear.
+      // Auto-promote any importance ≥ 4 fact even if the LLM didn't set lesson:true,
+      // because LLM discretion is unreliable for project-specific architectural decisions.
+      if (isLesson || (importance != null && importance >= 4)) {
         appendLesson(agentType, `${contextKey}:${fact.key}`, fact.value);
       }
     }

@@ -115,6 +115,39 @@ copilot-flow memory lint --namespace my-project
 
 ---
 
+### `memory promote`
+
+Promote one or more stored entries to a permanent lesson file without running a full
+LLM lint pass. Useful for cherry-picking specific high-importance findings after a run.
+
+```bash
+# Promote a single entry by key
+copilot-flow memory promote --namespace <ns> --key <key>
+
+# Promote all entries with importance ≥ 4 (the default)
+copilot-flow memory promote --namespace <ns>
+
+# Promote all importance ≥ 5 entries to a specific agent's lesson file
+copilot-flow memory promote --namespace <ns> --min-importance 5 --agent-type architect
+```
+
+| Flag | Description |
+|------|-------------|
+| `--namespace <ns>` | Namespace to read from |
+| `--key <key>` | Promote a single entry by its exact key |
+| `--min-importance <n>` | Batch-promote all entries with importance ≥ n (default: `4`; ignored when `--key` is set) |
+| `--agent-type <type>` | Target lesson file — any agent type name or `_global` (default: `_global`) |
+
+Entries are written to `.github/lessons/<agent-type>.md` as permanent bullet points.
+They survive namespace clears, TTL expiry, and database resets, and are injected into
+every future run for the matching agent type.
+
+`workflow-state` entries are always excluded.
+
+**TUI equivalent**: in the `/memory` screen, press `[p]` on any selected entry to promote it to `.github/lessons/_global.md` immediately.
+
+---
+
 ### `memory prime` *(deprecated)*
 
 > **Deprecated** — use `copilot-flow init` instead. `init` creates `.github/memory-prompt.md`,
@@ -245,14 +278,18 @@ copilot-flow retains knowledge from every run in two complementary stores:
 ### Automatic learning from successes
 
 After every successful phase/agent/swarm task, the distillation step extracts facts and
-stores them in SQLite. When the analyst flags a fact as `"lesson": true` (reserved for
-importance 4–5 patterns, pitfalls, or key constraints), copilot-flow additionally:
+stores them in SQLite. Any fact with **importance ≥ 4** is automatically promoted to a
+permanent lesson file — copilot-flow does not rely on the LLM to flag individual entries
+as lessons because that judgement is unreliable for project-specific decisions. In addition,
+if the analyst explicitly marks a fact with `"lesson": true`, it is promoted regardless of
+its importance score.
+
+When a fact is promoted, copilot-flow:
 
 1. Stores it permanently in SQLite with no TTL and `type: 'decision'`
 2. Appends it to `.github/lessons/<agentType>.md` — the per-agent lesson file
 
-The built-in distillation prompt already asks for the `lesson` field. You can customise
-what triggers a lesson in `.github/memory-prompt.md`.
+You can customise what gets extracted in `.github/memory-prompt.md`.
 
 ### Automatic learning from errors
 
@@ -290,11 +327,24 @@ When `--memory-namespace` is active, prompts are built in this order:
 ## Remembered context        ← SQLite facts (wake-up + topic tiers, TTL-bounded)
 ```
 
-### Manual lesson promotion via `memory lint`
+### Manual lesson promotion
 
-Run `copilot-flow memory lint --namespace <ns>` at any time to consolidate the SQLite
-store. Entries that the analyst flags as "promote" are written to `.github/lessons/_global.md`
-so they survive future namespace clears.
+Three ways to promote entries outside of automatic distillation:
+
+**CLI — single entry or batch:**
+```bash
+copilot-flow memory promote --namespace <ns> --key <key>
+copilot-flow memory promote --namespace <ns> --min-importance 4
+```
+
+**TUI — interactive:**  
+In the `/memory` screen, navigate to any entry and press `[p]` to promote it to
+`.github/lessons/_global.md` immediately.
+
+**LLM lint — analyst-curated:**  
+`copilot-flow memory lint --namespace <ns>` sends all entries to an analyst that
+consolidates duplicates and promotes entries tagged `lesson`/`error-recovery` or with
+importance 4–5 to `.github/lessons/_global.md`.
 
 ---
 

@@ -64,7 +64,7 @@ Rules:
 - Identify true duplicates (same meaning, different wording) — keep the better-written one, delete the rest
 - Merge related facts that naturally belong together into a single richer entry
 - Raise importance to 5 for facts that represent critical cross-session lessons worth remembering always
-- Flag entries with tags containing "lesson" or "error-recovery" with action "promote" — they belong in permanent storage
+- Flag entries with tags containing "lesson" or "error-recovery", OR entries with importance 4 or 5, with action "promote" — they belong in permanent storage
 - Never delete a fact unless you are certain it is redundant
 - Output ONLY a JSON array — no surrounding text, no markdown fences
 

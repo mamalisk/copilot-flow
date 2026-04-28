@@ -1,0 +1,75 @@
+version: "1"
+# Demo: Memory distillation + lesson promotion
+#
+# This pipeline demonstrates the full memory → lessons workflow:
+#
+#   1. Each phase runs with --memory-namespace, so agent outputs are automatically
+#      distilled into SQLite after completion.  Facts with importance 4-5 are also
+#      written immediately to .github/lessons/_global.md (permanent storage).
+#
+#   2. After the exec completes, inspect what was stored and promoted:
+#        copilot-flow memory list --namespace demo-lessons
+#        cat .github/lessons/*.md
+#
+#   3. Explicitly promote any remaining high-importance entry to a lesson file:
+#        copilot-flow memory promote --namespace demo-lessons --min-importance 4
+#
+#   4. Run memory lint to let the LLM curate the namespace and promote further:
+#        copilot-flow memory lint --namespace demo-lessons
+#
+# Run:
+#   copilot-flow exec examples/promote-lessons-demo.yaml \
+#     --memory-namespace demo-lessons \
+#     --output-file lessons-report.md \
+#     --stream
+#
+# The generated report (lessons-report.md) consolidates all three phases.
+# The lesson files (.github/lessons/) persist across runs and are injected
+# automatically into every future agent of the matching type.
+
+name: Promote Lessons Demo
+description: >
+  A three-phase pipeline that researches a topic, synthesises architectural
+  constraints, and performs a security review — producing findings at
+  importance 4-5 that are automatically promoted to permanent lesson files.
+
+phases:
+  - id: research
+    description: >
+      Research modern API design best practices, focusing on patterns that are
+      critical, non-obvious, or frequently misunderstood.  Identify at least
+      five concrete decisions with rationale.  Label each finding with an
+      importance score (1-5) where 5 means "must-know for every new project".
+    agentType: analyst
+    model: gpt-4o-mini
+    memoryNamespace: demo-lessons
+    contextTags: [research, architecture, api]
+    dependsOn: []
+    timeoutMs: 120000
+
+  - id: architecture
+    description: >
+      Given the research findings above, propose a concrete architecture for a
+      REST API service.  For each key decision (auth strategy, data layer,
+      error handling, versioning), state the chosen approach AND the
+      consequence of getting it wrong.  Rate each decision 1-5 for long-term
+      impact — decisions rated 4-5 should be treated as permanent project lessons.
+    agentType: architect
+    model: gpt-4o
+    memoryNamespace: demo-lessons
+    contextTags: [architecture, decision, constraint]
+    dependsOn: [research]
+    timeoutMs: 180000
+
+  - id: security-review
+    description: >
+      Perform a security review of the proposed architecture.  Identify the top
+      five risks and for each: describe the attack vector, the mitigation, and
+      why this is a cross-project lesson that should be remembered for all
+      future API projects.  Mark critical security constraints at importance 5.
+    agentType: security-auditor
+    model: gpt-4o
+    memoryNamespace: demo-lessons
+    contextTags: [security, constraint, architecture]
+    dependsOn: [architecture]
+    timeoutMs: 180000
