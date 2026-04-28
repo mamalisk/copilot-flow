@@ -22,6 +22,10 @@ function fmtDate(ts: number): string {
   return new Date(ts).toISOString().slice(0, 16).replace('T', ' ');
 }
 
+function fmtTokens(n: number): string {
+  return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
+}
+
 interface TelemetryProps {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   router: RouterApi;
@@ -125,6 +129,26 @@ export function TelemetryScreen({ router: _router }: TelemetryProps) {
           <Text dimColor>Avg response</Text>
           <Text bold>{fmtKB(summary.avgResponseChars)}</Text>
         </Box>
+        {(summary.totalInputTokens ?? 0) > 0 && (
+          <>
+            <Box flexDirection="column">
+              <Text dimColor>Total in</Text>
+              <Text bold>{fmtTokens(summary.totalInputTokens ?? 0)}</Text>
+            </Box>
+            <Box flexDirection="column">
+              <Text dimColor>Total out</Text>
+              <Text bold>{fmtTokens(summary.totalOutputTokens ?? 0)}</Text>
+            </Box>
+            <Box flexDirection="column">
+              <Text dimColor>Avg in</Text>
+              <Text bold>{fmtTokens(Math.round(summary.avgInputTokens ?? 0))}</Text>
+            </Box>
+            <Box flexDirection="column">
+              <Text dimColor>Avg out</Text>
+              <Text bold>{fmtTokens(Math.round(summary.avgOutputTokens ?? 0))}</Text>
+            </Box>
+          </>
+        )}
       </Box>
 
       {/* ── Two-pane breakdown ────────────────────────────────────────── */}
@@ -165,6 +189,9 @@ export function TelemetryScreen({ router: _router }: TelemetryProps) {
           const active = abs === selectedIdx;
           const status = r.success ? '✓' : '✗';
           const tools  = r.toolsInvoked.length > 0 ? ` [${r.toolsInvoked.length}t]` : '';
+          const tokens = (r.inputTokens ?? 0) > 0
+            ? `  ${fmtTokens(r.inputTokens ?? 0)}↑${fmtTokens(r.outputTokens ?? 0)}↓`
+            : '';
           return (
             <Box key={r.id}>
               <Text color={active ? 'cyan' : undefined}>
@@ -177,6 +204,7 @@ export function TelemetryScreen({ router: _router }: TelemetryProps) {
                 {'  '}
                 <Text dimColor>{fmtDuration(r.durationMs).padStart(7)}</Text>
                 <Text dimColor>{tools}</Text>
+                <Text dimColor>{tokens}</Text>
                 {!r.success && r.error && (
                   <Text color="red">{'  '}{r.error.slice(0, 40)}</Text>
                 )}

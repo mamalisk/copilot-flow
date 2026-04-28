@@ -99,6 +99,12 @@ export async function runAgentTask(
   let sessionId = '';
   // Accumulated tool names for telemetry (reset per outer attempt, not per retry).
   const toolsInvoked: string[] = [];
+  // Accumulated token counts across all attempts (assistant.usage events).
+  let inputTokens       = 0;
+  let outputTokens      = 0;
+  let cacheReadTokens   = 0;
+  let cacheWriteTokens  = 0;
+  let reasoningTokens   = 0;
 
   try {
     void hooks.preTask({ agentType, label: displayLabel });
@@ -215,6 +221,19 @@ export async function runAgentTask(
           }
         });
 
+        // ── Token usage ──────────────────────────────────────────────────────
+        session.on('assistant.usage', (e: { data: {
+          inputTokens?: number; outputTokens?: number;
+          cacheReadTokens?: number; cacheWriteTokens?: number;
+          reasoningTokens?: number;
+        }}) => {
+          inputTokens      += e.data.inputTokens      ?? 0;
+          outputTokens     += e.data.outputTokens     ?? 0;
+          cacheReadTokens  += e.data.cacheReadTokens  ?? 0;
+          cacheWriteTokens += e.data.cacheWriteTokens ?? 0;
+          reasoningTokens  += e.data.reasoningTokens  ?? 0;
+        });
+
         output.debug(`[${displayLabel}] Sending prompt (${task.length} chars, timeout: ${timeoutMs}ms)`);
         const result = await session.sendAndWait({ prompt: task }, timeoutMs);
 
@@ -236,7 +255,7 @@ export async function runAgentTask(
       }
     );
 
-    await hooks.postTask({ agentType, label: displayLabel, success: true, durationMs: Date.now() - startTime, attempts, promptChars: task.length, responseChars: output_text.length, model, sessionId, toolsInvoked });
+    await hooks.postTask({ agentType, label: displayLabel, success: true, durationMs: Date.now() - startTime, attempts, promptChars: task.length, responseChars: output_text.length, model, sessionId, toolsInvoked, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, reasoningTokens });
     agentPool.update(agentId, { sessionId, status: 'idle', completedAt: Date.now() });
 
     return {
@@ -251,7 +270,7 @@ export async function runAgentTask(
   } catch (err) {
     const classified = classifyError(err);
     output.error(`[${displayLabel}] Failed after ${attempts} attempt(s): ${classified.message}`);
-    await hooks.postTask({ agentType, label: displayLabel, success: false, durationMs: Date.now() - startTime, attempts, promptChars: task.length, responseChars: 0, model, sessionId, toolsInvoked, error: classified.message });
+    await hooks.postTask({ agentType, label: displayLabel, success: false, durationMs: Date.now() - startTime, attempts, promptChars: task.length, responseChars: 0, model, sessionId, toolsInvoked, error: classified.message, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, reasoningTokens });
     agentPool.update(agentId, { sessionId, status: 'error', completedAt: Date.now(), error: classified.message });
     // Record a permanent lesson so future runs know this agent/task combination fails
     appendLesson(

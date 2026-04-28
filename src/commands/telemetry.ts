@@ -15,6 +15,10 @@ function fmtKB(chars: number): string {
   return chars >= 1024 ? `${(chars / 1024).toFixed(1)} KB` : `${chars} B`;
 }
 
+function fmtTokens(n: number): string {
+  return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
+}
+
 export function registerTelemetry(program: Command): void {
   const tel = program.command('telemetry').description('View agent run metrics and performance');
 
@@ -32,13 +36,22 @@ export function registerTelemetry(program: Command): void {
       }
 
       output.header('Telemetry Summary');
-      printTable([
+      const rows: [string, string][] = [
         ['Total runs',    String(s.totalRuns)],
         ['Success rate',  fmtPct(s.successRate)],
         ['Avg latency',   fmtDuration(s.avgDurationMs)],
         ['Avg prompt',    fmtKB(s.avgPromptChars)],
         ['Avg response',  fmtKB(s.avgResponseChars)],
-      ]);
+      ];
+      if ((s.totalInputTokens ?? 0) > 0) {
+        rows.push(
+          ['Total tokens in',  fmtTokens(s.totalInputTokens  ?? 0)],
+          ['Total tokens out', fmtTokens(s.totalOutputTokens ?? 0)],
+          ['Avg tokens in',    fmtTokens(Math.round(s.avgInputTokens  ?? 0))],
+          ['Avg tokens out',   fmtTokens(Math.round(s.avgOutputTokens ?? 0))],
+        );
+      }
+      printTable(rows);
 
       output.blank();
       output.print('Agent breakdown:');
@@ -76,15 +89,19 @@ export function registerTelemetry(program: Command): void {
         return;
       }
 
+      const hasTokens = runs.some(r => (r.inputTokens ?? 0) > 0);
       output.header('Recent Runs');
       for (const r of runs) {
         const date = new Date(r.createdAt).toISOString().slice(0, 16).replace('T', ' ');
         const status = r.success ? '✓' : '✗';
         const tools = r.toolsInvoked.length > 0 ? `  [${r.toolsInvoked.length} tools]` : '';
+        const tokens = hasTokens
+          ? `  ${(r.inputTokens ?? 0) > 0 ? `${fmtTokens(r.inputTokens ?? 0)}↑${fmtTokens(r.outputTokens ?? 0)}↓` : '       '}`
+          : '';
         output.print(
           `  ${status}  ${date}  ${r.agentType.padEnd(22)}  ${fmtDuration(r.durationMs).padStart(8)}` +
           `  ${String(r.attempts) + (r.attempts > 1 ? ' attempts' : ' attempt ').padEnd(10)}` +
-          tools +
+          tools + tokens +
           (r.error ? `  ✗ ${r.error.slice(0, 50)}` : '')
         );
       }

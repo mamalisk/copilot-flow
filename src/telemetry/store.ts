@@ -35,6 +35,14 @@ CREATE INDEX IF NOT EXISTS idx_agent_type ON runs (agent_type);
 CREATE INDEX IF NOT EXISTS idx_created_at ON runs (created_at DESC);
 `;
 
+const TOKEN_COLUMNS = [
+  'ALTER TABLE runs ADD COLUMN input_tokens       INTEGER DEFAULT 0',
+  'ALTER TABLE runs ADD COLUMN output_tokens      INTEGER DEFAULT 0',
+  'ALTER TABLE runs ADD COLUMN cache_read_tokens  INTEGER DEFAULT 0',
+  'ALTER TABLE runs ADD COLUMN cache_write_tokens INTEGER DEFAULT 0',
+  'ALTER TABLE runs ADD COLUMN reasoning_tokens   INTEGER DEFAULT 0',
+];
+
 export class TelemetryStore {
   private db: InstanceType<typeof DatabaseSyncType>;
 
@@ -47,6 +55,16 @@ export class TelemetryStore {
     this.db = new DatabaseSync(absPath);
     this.db.exec(SCHEMA);
     this.db.exec('PRAGMA journal_mode = WAL');
+
+    // Migrate existing DB to add token columns (idempotent — skip if already present).
+    const cols = new Set(
+      (this.db.prepare('PRAGMA table_info(runs)').all() as { name: string }[]).map(r => r.name)
+    );
+    if (!cols.has('input_tokens')) {
+      for (const stmt of TOKEN_COLUMNS) {
+        this.db.exec(stmt + ';');
+      }
+    }
   }
 
   /** Insert a new run record. */
@@ -54,8 +72,9 @@ export class TelemetryStore {
     const stmt = this.db.prepare(`
       INSERT INTO runs
         (id, agent_type, label, session_id, model, success, duration_ms, attempts,
-         prompt_chars, response_chars, tools_invoked, error, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         prompt_chars, response_chars, tools_invoked, error, created_at,
+         input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, reasoning_tokens)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     stmt.run(
       run.id,
@@ -71,6 +90,11 @@ export class TelemetryStore {
       JSON.stringify(run.toolsInvoked),
       run.error ?? null,
       run.createdAt,
+      run.inputTokens      ?? 0,
+      run.outputTokens     ?? 0,
+      run.cacheReadTokens  ?? 0,
+      run.cacheWriteTokens ?? 0,
+      run.reasoningTokens  ?? 0,
     );
   }
 
@@ -95,7 +119,11 @@ export class TelemetryStore {
               AVG(CAST(success AS REAL)) AS successRate,
               AVG(duration_ms) AS avgDuration,
               AVG(prompt_chars) AS avgPrompt,
-              AVG(response_chars) AS avgResponse
+              AVG(response_chars) AS avgResponse,
+              SUM(input_tokens)  AS totalInputTokens,
+              SUM(output_tokens) AS totalOutputTokens,
+              AVG(input_tokens)  AS avgInputTokens,
+              AVG(output_tokens) AS avgOutputTokens
        FROM runs`
     ).get() as Record<string, number | null>;
 
@@ -104,6 +132,7 @@ export class TelemetryStore {
       return {
         totalRuns: 0, successRate: 0, avgDurationMs: 0,
         avgPromptChars: 0, avgResponseChars: 0, byAgentType: {}, topTools: [],
+        totalInputTokens: 0, totalOutputTokens: 0, avgInputTokens: 0, avgOutputTokens: 0,
       };
     }
 
@@ -152,6 +181,10 @@ export class TelemetryStore {
       avgResponseChars: Number(totalRow.avgResponse ?? 0),
       byAgentType,
       topTools,
+      totalInputTokens:  Number(totalRow.totalInputTokens  ?? 0),
+      totalOutputTokens: Number(totalRow.totalOutputTokens ?? 0),
+      avgInputTokens:    Number(totalRow.avgInputTokens    ?? 0),
+      avgOutputTokens:   Number(totalRow.avgOutputTokens   ?? 0),
     };
   }
 
@@ -166,19 +199,24 @@ export class TelemetryStore {
 
   private _toRun(row: Record<string, unknown>): TelemetryRun {
     return {
-      id:            String(row.id),
-      agentType:     String(row.agent_type) as AgentType,
-      label:         String(row.label ?? ''),
-      sessionId:     String(row.session_id ?? ''),
-      model:         String(row.model ?? ''),
-      success:       row.success === 1,
-      durationMs:    Number(row.duration_ms),
-      attempts:      Number(row.attempts ?? 1),
-      promptChars:   Number(row.prompt_chars ?? 0),
-      responseChars: Number(row.response_chars ?? 0),
-      toolsInvoked:  (() => { try { return JSON.parse(String(row.tools_invoked ?? '[]')); } catch { return []; } })(),
-      error:         row.error != null ? String(row.error) : undefined,
-      createdAt:     Number(row.created_at),
+      id:               String(row.id),
+      agentType:        String(row.agent_type) as AgentType,
+      label:            String(row.label ?? ''),
+      sessionId:        String(row.session_id ?? ''),
+      model:            String(row.model ?? ''),
+      success:          row.success === 1,
+      durationMs:       Number(row.duration_ms),
+      attempts:         Number(row.attempts ?? 1),
+      promptChars:      Number(row.prompt_chars ?? 0),
+      responseChars:    Number(row.response_chars ?? 0),
+      toolsInvoked:     (() => { try { return JSON.parse(String(row.tools_invoked ?? '[]')); } catch { return []; } })(),
+      error:            row.error != null ? String(row.error) : undefined,
+      createdAt:        Number(row.created_at),
+      inputTokens:      Number(row.input_tokens      ?? 0),
+      outputTokens:     Number(row.output_tokens     ?? 0),
+      cacheReadTokens:  Number(row.cache_read_tokens  ?? 0),
+      cacheWriteTokens: Number(row.cache_write_tokens ?? 0),
+      reasoningTokens:  Number(row.reasoning_tokens   ?? 0),
     };
   }
 }

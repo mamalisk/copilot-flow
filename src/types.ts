@@ -327,6 +327,11 @@ export interface TelemetryRun {
   toolsInvoked: string[];
   error?: string;
   createdAt: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
+  reasoningTokens?: number;
 }
 
 export interface TelemetrySummary {
@@ -338,6 +343,10 @@ export interface TelemetrySummary {
   avgResponseChars: number;
   byAgentType: Record<string, { runs: number; successRate: number; avgDurationMs: number }>;
   topTools: Array<{ tool: string; count: number }>;
+  totalInputTokens?: number;
+  totalOutputTokens?: number;
+  avgInputTokens?: number;
+  avgOutputTokens?: number;
 }
 
 // ─── CLI Types ────────────────────────────────────────────────────────────────
