@@ -36,7 +36,7 @@ interface LintActionUpdate {
   value: string;
   importance?: number;
 }
-interface LintActionPromote { action: 'promote'; key: string; reason: string }
+interface LintActionPromote { action: 'promote'; key: string; reason: string; target?: string }
 
 type LintAction =
   | LintActionKeep
@@ -65,6 +65,7 @@ Rules:
 - Merge related facts that naturally belong together into a single richer entry
 - Raise importance to 5 for facts that represent critical cross-session lessons worth remembering always
 - Flag entries with tags containing "lesson" or "error-recovery", OR entries with importance 4 or 5, with action "promote" — they belong in permanent storage
+- Set "target" on promote actions: use a specific agent type (e.g. "coder", "reviewer", "tester") when the lesson only applies to that agent; use "_global" (or omit) for cross-agent lessons
 - Never delete a fact unless you are certain it is redundant
 - Output ONLY a JSON array — no surrounding text, no markdown fences
 
@@ -74,7 +75,8 @@ Action types (all keys are the full stored key strings from the input):
   {"action":"delete","key":"...","reason":"duplicate of X"},
   {"action":"merge","into":"target-key","absorb":["key-a","key-b"],"value":"merged text","importance":4,"tags":["decision"]},
   {"action":"update","key":"...","value":"refined text","importance":5},
-  {"action":"promote","key":"...","reason":"critical cross-session lesson"}
+  {"action":"promote","key":"...","reason":"critical cross-session lesson","target":"_global"},
+  {"action":"promote","key":"...","reason":"coder-specific lesson","target":"coder"}
 ]
 
 Every key from the input must appear in exactly one action.
@@ -149,7 +151,7 @@ export async function lintMemory(
         case 'delete':  log.dim(`    delete  ${a.key} — ${a.reason}`); report.deleted++; break;
         case 'merge':   log.dim(`    merge   ${a.absorb.join(', ')} → ${a.into}`); report.merged++; break;
         case 'update':  log.dim(`    update  ${a.key}`); report.updated++; break;
-        case 'promote': log.dim(`    promote ${a.key} — ${a.reason}`); report.promoted++; break;
+        case 'promote': log.dim(`    promote ${a.key} → ${a.target ?? '_global'}.md — ${a.reason}`); report.promoted++; break;
       }
     }
     return report;
@@ -196,7 +198,8 @@ export async function lintMemory(
       case 'promote': {
         const existing = entries.find((e: MemoryEntry) => e.key === a.key);
         if (existing) {
-          appendLesson('_global', a.key, existing.value, options.cwd);
+          const target = a.target ?? '_global';
+          appendLesson(target, a.key, existing.value, options.cwd);
         }
         report.promoted++;
         break;
