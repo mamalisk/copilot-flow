@@ -12,7 +12,7 @@ import { withRetry, RetryPredicates } from '../core/retry.js';
 import { classifyError } from '../core/error-handler.js';
 import { output } from '../output.js';
 import { hooks } from '../hooks/executor.js';
-import { getAgentDefinition } from './registry.js';
+import { getAgentDefinitionOrFallback, AGENT_REGISTRY } from './registry.js';
 import { agentPool } from './pool.js';
 import { appendLesson } from '../memory/inject.js';
 import type { AgentType, AgentResult } from '../types.js';
@@ -63,17 +63,16 @@ export interface RunTaskOptions {
  * and disconnects. Retries on transient failures.
  */
 export async function runAgentTask(
-  agentType: AgentType,
+  agentType: string,
   task: string,
   options: RunTaskOptions = {}
 ): Promise<AgentResult> {
-  const def = getAgentDefinition(agentType);
+  const def = getAgentDefinitionOrFallback(agentType);
 
-  // Check for a project-local system prompt override in .github/agents/<type>.md.
-  // When the file exists its trimmed content replaces the registry default so teams
-  // can tailor agent behaviour without touching the package source.
+  // For built-in types, allow a project-local override in .github/agents/<type>.md.
+  // Custom types already have their .md content in def.systemMessage — skip the read.
   const customPromptPath = path.join(process.cwd(), '.github', 'agents', `${agentType}.md`);
-  const systemMessage = fs.existsSync(customPromptPath)
+  const systemMessage = agentType in AGENT_REGISTRY && fs.existsSync(customPromptPath)
     ? fs.readFileSync(customPromptPath, 'utf-8').trim()
     : def.systemMessage;
 
@@ -109,7 +108,7 @@ export async function runAgentTask(
   try {
     void hooks.preTask({ agentType, label: displayLabel });
 
-    agentPool.register({ id: agentId, type: agentType, sessionId: '', status: 'busy', task: task.slice(0, 200), startedAt: startTime });
+    agentPool.register({ id: agentId, type: agentType as AgentType, sessionId: '', status: 'busy', task: task.slice(0, 200), startedAt: startTime });
 
     const output_text = await withRetry(
       async () => {
@@ -259,7 +258,7 @@ export async function runAgentTask(
     agentPool.update(agentId, { sessionId, status: 'idle', completedAt: Date.now() });
 
     return {
-      agentType,
+      agentType: agentType as AgentType,
       agentId,
       sessionId,
       output: output_text,
@@ -274,7 +273,7 @@ export async function runAgentTask(
     agentPool.update(agentId, { sessionId, status: 'error', completedAt: Date.now(), error: classified.message });
     // Record a permanent lesson so future runs know this agent/task combination fails
     appendLesson(
-      agentType,
+      agentType as AgentType,
       `agent-failure:${agentType}-${Date.now()}`,
       `Agent "${agentType}" exhausted ${attempts} retry attempt(s): ${classified.message}`,
     );
@@ -295,7 +294,7 @@ export async function runAgentTask(
     }
 
     return {
-      agentType,
+      agentType: agentType as AgentType,
       agentId,
       sessionId,
       output: '',

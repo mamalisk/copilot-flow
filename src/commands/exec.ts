@@ -57,7 +57,7 @@ function loadAgentsFromDirs(dirs: string[]): CustomAgentConfig[] {
  *   CLI --model  >  phase.model  >  config.agents.models[type]  >  config.defaultModel
  */
 function resolveModel(
-  agentType: AgentType,
+  agentType: string,
   phase: PlanPhase,
   cliModel: string,
   config: CopilotFlowConfig,
@@ -65,7 +65,7 @@ function resolveModel(
   return (
     cliModel ||
     phase.model ||
-    config.agents.models?.[agentType] ||
+    config.agents.models?.[agentType as AgentType] ||
     config.defaultModel
   );
 }
@@ -188,7 +188,7 @@ async function runPhase(
   globalMaxRetries: number,
   parallelCount: number,
   sessionExts: SessionExts,
-): Promise<{ id: string; output: string; outFile: string; skipped: boolean }> {
+): Promise<{ id: string; output: string; outFile: string; skipped: boolean; retrigger?: { upstreamId: string; failReasons: string[] } }> {
   const outFile = phaseOutputFile(phase, planDir);
 
   // Skip already-complete phases unless --force
@@ -233,8 +233,13 @@ async function runPhase(
     : '';
 
   while (attempt <= maxRetries) {
+    const failureContext = failReasons.length > 0
+      ? `\n\n## Previous attempt(s) failed — please address these issues\n\n` +
+        failReasons.map((r, i) => `- Attempt ${i + 1}: ${r}`).join('\n') +
+        '\n\n'
+      : '';
     const basePrompt = buildPhasePrompt(phase, plan, phaseResults, planDir);
-    const prompt = memoryContext + basePrompt;
+    const prompt = memoryContext + failureContext + basePrompt;
 
     // ── Run the phase (agent or swarm) ──────────────────────────────────────
     if (phase.type === 'swarm') {
@@ -389,6 +394,12 @@ async function runPhase(
     failReasons.push(check.reason ?? 'no reason given');
     attempt++;
     if (attempt > maxRetries) {
+      if (phase.retriggerPhaseOnFailure) {
+        return {
+          id: phase.id, output: phaseOutput, outFile, skipped: false,
+          retrigger: { upstreamId: phase.retriggerPhaseOnFailure, failReasons: [...failReasons] },
+        };
+      }
       throw new Error(
         `Phase "${phase.id}" failed acceptance after ${maxRetries + 1} attempt(s).` +
         (check.reason ? ` Reason: ${check.reason}` : ''),
@@ -524,6 +535,8 @@ export function registerExec(program: Command): void {
       output.dim(`Phases: ${allPhases.map(p => p.id).join(' → ')}`);
       output.blank();
 
+      const retriggerCycles = new Map<string, number>();
+
       while (remaining.size > 0) {
         // Collect all phases whose dependencies are satisfied
         const wave = allPhases.filter(p =>
@@ -549,7 +562,8 @@ export function registerExec(program: Command): void {
         // read from completed results only — no writes until after the wave.
         const readonlyResults: ReadonlyMap<string, string> = phaseResults;
 
-        let waveResults: Array<{ id: string; output: string; outFile: string; skipped: boolean }>;
+        type WaveResult = { id: string; output: string; outFile: string; skipped: boolean; retrigger?: { upstreamId: string; failReasons: string[] } };
+        let waveResults: WaveResult[];
         try {
           waveResults = await Promise.all(
             wave.map(phase =>
@@ -565,7 +579,8 @@ export function registerExec(program: Command): void {
           process.exit(1);
         }
 
-        for (const r of waveResults) {
+        // Mark phases that completed normally
+        for (const r of waveResults.filter(r => !r.retrigger)) {
           phaseResults.set(r.id, r.output);
           completed.add(r.id);
           remaining.delete(r.id);
@@ -573,6 +588,72 @@ export function registerExec(program: Command): void {
             if (opts.stream) output.blank();
             output.success(`Phase "${r.id}" complete → ${r.outFile}`);
           }
+        }
+
+        // Handle cross-phase retriggers
+        for (const failed of waveResults.filter(r => r.retrigger)) {
+          const failedPhase = plan.phases.find(p => p.id === failed.id)!;
+          const maxCycles = failedPhase.maxRetriggerCycles ?? 1;
+          let currentResult: WaveResult = failed;
+          let cyclesDone = retriggerCycles.get(failed.id) ?? 0;
+
+          while (currentResult.retrigger) {
+            if (cyclesDone >= maxCycles) {
+              output.error(`Phase "${failed.id}" retrigger limit (${maxCycles}) reached.`);
+              await clientManager.shutdown();
+              process.exit(1);
+            }
+            cyclesDone++;
+            retriggerCycles.set(failed.id, cyclesDone);
+
+            const { upstreamId, failReasons: reasons } = currentResult.retrigger;
+            const upstreamPhase = plan.phases.find(p => p.id === upstreamId);
+            if (!upstreamPhase) {
+              output.error(`retriggerPhaseOnFailure: phase "${upstreamId}" not found`);
+              await clientManager.shutdown();
+              process.exit(1);
+            }
+
+            output.warn(`[${failed.id}] Acceptance exhausted (cycle ${cyclesDone}/${maxCycles}) — retriggering "${upstreamId}"…`);
+
+            const failCtx =
+              `\n\n## Downstream phase "${failed.id}" failed — please address these issues\n\n` +
+              reasons.map((r, i) => `- Attempt ${i + 1}: ${r}`).join('\n') + '\n\n';
+
+            const origDesc = upstreamPhase.description;
+            upstreamPhase.description = origDesc + failCtx;
+            try {
+              const upstreamResult = await runPhase(
+                upstreamPhase, plan, phaseResults, planDir,
+                { ...opts, force: true }, config, cliModel, timeoutMs, globalMaxRetries, 1, sessionExts,
+              );
+              upstreamPhase.description = origDesc;
+              phaseResults.set(upstreamId, upstreamResult.output);
+              output.success(`Upstream phase "${upstreamId}" re-run → ${upstreamResult.outFile}`);
+            } catch (err) {
+              upstreamPhase.description = origDesc;
+              output.error(err instanceof Error ? err.message : String(err));
+              await clientManager.shutdown();
+              process.exit(1);
+            }
+
+            try {
+              currentResult = await runPhase(
+                failedPhase, plan, phaseResults, planDir,
+                { ...opts, force: true }, config, cliModel, timeoutMs, globalMaxRetries, 1, sessionExts,
+              );
+            } catch (err) {
+              output.error(err instanceof Error ? err.message : String(err));
+              await clientManager.shutdown();
+              process.exit(1);
+            }
+          }
+
+          phaseResults.set(failed.id, currentResult.output);
+          completed.add(failed.id);
+          remaining.delete(failed.id);
+          if (opts.stream) output.blank();
+          output.success(`Phase "${failed.id}" complete after retrigger → ${currentResult.outFile}`);
         }
 
         output.blank();

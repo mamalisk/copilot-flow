@@ -84,7 +84,7 @@ export type SwarmTopology = 'hierarchical' | 'mesh' | 'sequential';
 
 export interface SwarmTask {
   id: string;
-  agentType: AgentType;
+  agentType: string;
   prompt: string;
   /**
    * Short human-readable description shown in progress output.
@@ -236,8 +236,8 @@ export interface PlanPhase {
   description: string;
   /** 'agent' runs a single specialist; 'swarm' runs a multi-agent pipeline. */
   type: 'agent' | 'swarm';
-  /** Agent type (required when type is 'agent'). */
-  agentType?: AgentType;
+  /** Agent type (required when type is 'agent'). Built-in AgentType or custom name from .github/agents/<name>.md. */
+  agentType?: string;
   /** Swarm topology (used when type is 'swarm'). Default: 'hierarchical'. */
   topology?: SwarmTopology;
   /** Agent types in the swarm pipeline (used when type is 'swarm'). */
@@ -280,6 +280,17 @@ export interface PlanPhase {
    * For swarm phases the same agent is activated for every session in the swarm.
    */
   agentName?: string;
+  /**
+   * When acceptance criteria are exhausted, re-run this upstream phase ID with
+   * failure context injected, then retry this phase once more.
+   * Pair with maxAcceptanceRetries: 0 to immediately retrigger without wasting attempts.
+   */
+  retriggerPhaseOnFailure?: string;
+  /**
+   * Number of full retrigger cycles allowed (default: 1).
+   * Each cycle = re-run upstream phase with failure context + re-run this phase.
+   */
+  maxRetriggerCycles?: number;
   /**
    * Additional directories to scan for *.md custom agent definitions for this phase.
    * Merged with config.agents.directories and the CLI --agent-dir list.

@@ -145,7 +145,7 @@ export function registerSwarm(program: Command): void {
         ...t,
         sessionOptions: {
           ...t.sessionOptions,
-          model: opts.model ?? config.agents.models?.[t.agentType] ?? config.defaultModel ?? undefined,
+          model: opts.model ?? config.agents.models?.[t.agentType as AgentType] ?? config.defaultModel ?? undefined,
         },
       }));
 

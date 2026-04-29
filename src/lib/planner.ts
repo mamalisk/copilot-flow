@@ -23,7 +23,8 @@ that breaks the work into sequential phases.
 Rules:
 - Each phase must have a unique kebab-case id.
 - type must be "agent" (single specialist) or "swarm" (multi-agent pipeline).
-- agentType (type: agent) must be one of: ${AGENT_TYPES}
+- agentType (type: agent): use one of the built-in types (${AGENT_TYPES}),
+  OR a custom name if the project has a matching .github/agents/<name>.md file.
 - topology (type: swarm) must be one of: hierarchical, sequential, mesh
 - agents (type: swarm) is a list of agentType values forming the pipeline.
 - dependsOn lists phase ids that must complete before this phase starts.
@@ -38,6 +39,16 @@ Rules:
   take longer than the default (e.g. a large code-generation phase).
 - agentName: optional name of a custom agent to activate for this phase. Only set when
   the user's --agent-dir provides a named agent that fits the phase's role.
+- acceptanceCriteria: optional natural-language criteria a reviewer will evaluate. When
+  set, the phase is automatically re-run up to maxAcceptanceRetries times on failure.
+- maxAcceptanceRetries: max additional attempts on acceptance failure (default: 2).
+  Set to 0 when a downstream failure should retrigger a different upstream phase instead
+  of repeating the same agent pointlessly.
+- retriggerPhaseOnFailure: when this phase exhausts its acceptance retries, re-run the
+  named upstream phase with the failure context injected, then retry this phase.
+  Use with maxAcceptanceRetries: 0 for implement→test pipelines so the tester's failures
+  drive the coder to fix the code rather than the tester attempting to fix it itself.
+- maxRetriggerCycles: number of full retrigger cycles allowed (default: 1).
 - Output ONLY valid YAML inside a single \`\`\`yaml code block. No other text.
 
 Example structure:
@@ -56,24 +67,27 @@ phases:
     agents: [architect, analyst]
     dependsOn: [research]
   - id: implement
-    description: Implement the solution in 3 programming languages as fast as possible.
-    type: swarm
-    topology: mesh
-    agents: [coder, coder, coder]
-    subTasks:
-      - "Write hello_world.py — a Python script that prints 'Hello, World!'"
-      - "Write hello_world.js — a Node.js script that prints 'Hello, World!'"
-      - "Write hello_world.go — a Go program that prints 'Hello, World!'"
-    model: gpt-4o-mini    # optional: cheaper model for bulk code generation
-    timeoutMs: 1800000    # optional: 30 min for a heavy phase
-    agentName: billing-expert   # optional: activate a custom agent for this phase
+    description: Implement the solution based on the design.
+    type: agent
+    agentType: coder
+    acceptanceCriteria: "Implementation is complete and all files are written."
+    maxAcceptanceRetries: 2
     dependsOn: [design]
+  - id: test
+    description: Write and run tests; verify the implementation is correct.
+    type: agent
+    agentType: tester
+    acceptanceCriteria: "All tests pass and coverage is adequate."
+    maxAcceptanceRetries: 0
+    retriggerPhaseOnFailure: implement
+    maxRetriggerCycles: 2
+    dependsOn: [implement]
   - id: review
     description: Review the implementation for quality and correctness.
     type: agent
     agentType: reviewer
     model: o1             # optional: stronger model for validation
-    dependsOn: [implement]
+    dependsOn: [test]
 \`\`\`
 
 Specification to plan:

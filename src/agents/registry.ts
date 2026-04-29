@@ -3,6 +3,8 @@
  * built-in agent type. Inspired by Ruflo's 12 agent types.
  */
 
+import fs from 'fs';
+import path from 'path';
 import type { AgentDefinition, AgentType } from '../types.js';
 
 export const AGENT_REGISTRY: Record<AgentType, AgentDefinition> = {
@@ -181,6 +183,39 @@ export function getAgentDefinition(type: AgentType): AgentDefinition {
   const def = AGENT_REGISTRY[type];
   if (!def) throw new Error(`Unknown agent type: ${type}`);
   return def;
+}
+
+/**
+ * Returns the registry definition for known built-in types, or a synthetic
+ * definition read from `.github/agents/{type}.md` for custom types.
+ * Throws if neither exists.
+ */
+export function getAgentDefinitionOrFallback(
+  type: string,
+  cwd = process.cwd(),
+): AgentDefinition {
+  if (type in AGENT_REGISTRY) {
+    return AGENT_REGISTRY[type as AgentType];
+  }
+
+  const customPath = path.join(cwd, '.github', 'agents', `${type}.md`);
+  if (fs.existsSync(customPath)) {
+    const raw = fs.readFileSync(customPath, 'utf-8').trim();
+    // Strip YAML frontmatter if present (avoids adding gray-matter dep)
+    const systemMessage = raw.startsWith('---')
+      ? raw.replace(/^---[\s\S]*?---\n/, '').trim()
+      : raw;
+    return {
+      model:        '',
+      description:  `Custom agent: ${type}`,
+      systemMessage,
+      capabilities: [],
+    };
+  }
+
+  throw new Error(
+    `Unknown agent type "${type}" — no registry entry and no .github/agents/${type}.md`,
+  );
 }
 
 /** Return all agent types as an array. */
