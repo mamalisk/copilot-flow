@@ -114,7 +114,7 @@ phases:
 | `id` | ✓ | Unique kebab-case identifier, used as default output filename |
 | `description` | ✓ | What this phase should produce |
 | `type` | ✓ | `agent` (single specialist) or `swarm` (multi-agent pipeline) |
-| `agentType` | agent phases | One of the 14 built-in agent types (coder, researcher, tester, reviewer, architect, coordinator, analyst, debugger, documenter, optimizer, security-auditor, performance-engineer, orchestrator, product-manager) |
+| `agentType` | agent phases | A built-in agent type (coder, researcher, tester, reviewer, architect, coordinator, analyst, debugger, documenter, optimizer, security-auditor, performance-engineer, orchestrator, product-manager) **or** any custom name with a matching `.github/agents/<name>*.md` file |
 | `topology` | swarm phases | `hierarchical` \| `sequential` \| `mesh` |
 | `agents` | swarm phases | List of agent types forming the pipeline |
 | `subTasks` | swarm + mesh + duplicate agents | Per-agent task descriptions (see [Parallel agent orchestration](#parallel-agent-orchestration)) |
@@ -127,6 +127,8 @@ phases:
 | `dependsOn` | — | List of phase IDs that must complete first |
 | `acceptanceCriteria` | — | Natural-language pass/fail criteria evaluated by a reviewer agent |
 | `maxAcceptanceRetries` | — | Max re-runs on acceptance failure (default: 2, so 3 total attempts) |
+| `retriggerPhaseOnFailure` | — | Phase ID to re-run when this phase exhausts its acceptance retries (see [Cross-phase retrigger](#cross-phase-retrigger)) |
+| `maxRetriggerCycles` | — | How many upstream+downstream retrigger cycles to allow (default: 1) |
 
 ---
 
@@ -402,4 +404,71 @@ or `config.defaultModel`, in that priority order.
     at least 2 Given/When/Then acceptance criteria.
   maxAcceptanceRetries: 2
   dependsOn: [research]
+```
+
+On each retry, the phase prompt is automatically prepended with a `## Previous attempt(s) failed` section listing every reviewer rejection so far, giving the agent concrete feedback to act on.
+
+### Cross-phase retrigger
+
+Sometimes a downstream phase fails not because its own agent is wrong, but because the
+upstream output is flawed. For example, a `tester` phase may fail because the `coder`
+produced code that doesn't compile. Retrying the tester alone is pointless.
+
+Use `retriggerPhaseOnFailure` to re-run an upstream phase with failure context injected,
+then automatically re-try the failing phase:
+
+```yaml
+- id: implement
+  description: Implement the feature.
+  type: agent
+  agentType: coder
+  acceptanceCriteria: "All files are written and the code compiles."
+  maxAcceptanceRetries: 2
+  dependsOn: [design]
+
+- id: test
+  description: Write and run tests; verify the implementation.
+  type: agent
+  agentType: tester
+  acceptanceCriteria: "All tests pass and coverage is adequate."
+  maxAcceptanceRetries: 0          # don't retry the tester — retrigger the coder instead
+  retriggerPhaseOnFailure: implement
+  maxRetriggerCycles: 2            # allow up to 2 full coder→tester cycles
+  dependsOn: [implement]
+```
+
+**What happens when `test` exhausts its acceptance retries:**
+
+1. copilot-flow re-runs `implement`, injecting a `## Downstream phase "test" failed` block
+   that lists every tester rejection reason.
+2. The updated `implement` output is saved to disk.
+3. `test` is re-run with the fresh implementation as context.
+4. If `test` fails again, the cycle repeats up to `maxRetriggerCycles` times.
+
+**Tips:**
+
+- Set `maxAcceptanceRetries: 0` on the downstream phase when you want to immediately
+  retrigger the upstream phase without wasting attempts re-running the same failing agent.
+- Combine with `maxAcceptanceRetries > 0` on the upstream phase so the coder can
+  self-correct before the tester even sees the output.
+- `maxRetriggerCycles` defaults to `1` (one upstream+downstream cycle). Raise it for
+  complex pipelines where multiple correction rounds may be needed.
+
+### Custom agent types
+
+`agentType` accepts any name, not just the 14 built-ins. copilot-flow looks up custom
+types in the `.github/agents/` directory (or any directory added via `--agent-dir`):
+
+- The file whose stem (name with all extensions stripped) matches the type is used.
+- Common naming conventions are all supported: `my-agent.md`, `my-agent.agent.md`,
+  `my-agent.custom.md` — all resolve to `agentType: my-agent`.
+- YAML frontmatter (if present) is stripped automatically; the remaining markdown becomes
+  the agent's system prompt.
+
+```yaml
+- id: billing
+  description: Implement billing logic using the Stripe API.
+  type: agent
+  agentType: stripe-expert      # resolved from .github/agents/stripe-expert.agent.md
+  dependsOn: [design]
 ```
