@@ -198,23 +198,32 @@ export function getAgentDefinitionOrFallback(
     return AGENT_REGISTRY[type as AgentType];
   }
 
-  const customPath = path.join(cwd, '.github', 'agents', `${type}.md`);
-  if (fs.existsSync(customPath)) {
-    const raw = fs.readFileSync(customPath, 'utf-8').trim();
-    // Strip YAML frontmatter if present (avoids adding gray-matter dep)
-    const systemMessage = raw.startsWith('---')
-      ? raw.replace(/^---[\s\S]*?---\n/, '').trim()
-      : raw;
-    return {
-      model:        '',
-      description:  `Custom agent: ${type}`,
-      systemMessage,
-      capabilities: [],
-    };
+  // Scan the agents directory for any .md file whose stem (name with all extensions
+  // stripped) matches the type — covers foo.md, foo.agent.md, foo.custom.md, etc.
+  const agentsDir = path.join(cwd, '.github', 'agents');
+  if (fs.existsSync(agentsDir)) {
+    const match = fs.readdirSync(agentsDir).find(f => {
+      if (!f.endsWith('.md')) return false;
+      const stem = f.replace(/(\.[^.]+)+$/, '');
+      return stem === type;
+    });
+    if (match) {
+      const raw = fs.readFileSync(path.join(agentsDir, match), 'utf-8').trim();
+      // Strip YAML frontmatter if present (avoids adding gray-matter dep)
+      const systemMessage = raw.startsWith('---')
+        ? raw.replace(/^---[\s\S]*?---\n/, '').trim()
+        : raw;
+      return {
+        model:        '',
+        description:  `Custom agent: ${type}`,
+        systemMessage,
+        capabilities: [],
+      };
+    }
   }
 
   throw new Error(
-    `Unknown agent type "${type}" — no registry entry and no .github/agents/${type}.md`,
+    `Unknown agent type "${type}" — no registry entry and no matching file in .github/agents/`,
   );
 }
 

@@ -69,12 +69,21 @@ export async function runAgentTask(
 ): Promise<AgentResult> {
   const def = getAgentDefinitionOrFallback(agentType);
 
-  // For built-in types, allow a project-local override in .github/agents/<type>.md.
+  // For built-in types, allow a project-local override in .github/agents/<type>[.*].md.
   // Custom types already have their .md content in def.systemMessage — skip the read.
-  const customPromptPath = path.join(process.cwd(), '.github', 'agents', `${agentType}.md`);
-  const systemMessage = agentType in AGENT_REGISTRY && fs.existsSync(customPromptPath)
-    ? fs.readFileSync(customPromptPath, 'utf-8').trim()
-    : def.systemMessage;
+  let systemMessage = def.systemMessage;
+  if (agentType in AGENT_REGISTRY) {
+    const agentsDir = path.join(process.cwd(), '.github', 'agents');
+    if (fs.existsSync(agentsDir)) {
+      const match = fs.readdirSync(agentsDir).find(f => {
+        if (!f.endsWith('.md')) return false;
+        return f.replace(/(\.[^.]+)+$/, '') === agentType;
+      });
+      if (match) {
+        systemMessage = fs.readFileSync(path.join(agentsDir, match), 'utf-8').trim();
+      }
+    }
+  }
 
   // Use explicitly passed model, then agent registry default, then config default.
   // Empty string means "let the Copilot CLI choose" — omitted from createSession entirely.
